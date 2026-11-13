@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1">
+      <stop stop-color="#c5d8db"/>
+      <stop offset="1" stop-color="#f4ead8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#f5f2e9"/>
+  <g fill="#283f3c" font-family="Arial, sans-serif">
+    <text x="80" y="83" font-size="28" font-weight="bold" letter-spacing="5">FIELDNOTES</text>
+    <text x="1080" y="80" font-size="18">Destinations</text>
+    <text x="1250" y="80" font-size="18">Our story</text>
+    <text x="1410" y="80" font-size="18">Explore ↗</text>
+  </g>
+  <path d="M80 119H1520" stroke="#cdd1c6"/>
+  <rect x="710" y="164" width="810" height="680" rx="4" fill="url(#sky)"/>
+  <circle cx="1328" cy="302" r="69" fill="#f9edd1"/>
+  <path d="M710 635 953 309 1097 497 1230 358 1520 686V844H710Z" fill="#899b98"/>
+  <path d="m858 437 95-128 94 123-67-26-27 32-28-33Z" fill="#e8eee5"/>
+  <path d="m1157 433 73-75 109 124-91-39-25 17-33-35Z" fill="#dbe5dc"/>
+  <path d="M710 741 892 596 1100 718 1305 510 1520 671V844H710Z" fill="#5a7b70"/>
+  <path d="M710 811 965 724 1170 801 1390 682 1520 721V844H710Z" fill="#2e554a"/>
+  <path d="M1068 844q72-65 131-72t97-57" fill="none" stroke="#c9c8a0" stroke-width="8"/>
+  <g fill="#283f3c">
+    <text x="80" y="230" font-family="Arial, sans-serif" font-size="17" letter-spacing="4">GO SOMEWHERE THAT STAYS WITH YOU</text>
+    <text x="75" y="370" font-family="Georgia, serif" font-size="100">A little further.</text>
+    <text x="75" y="482" font-family="Georgia, serif" font-size="100">A little slower.</text>
+    <g font-family="Arial, sans-serif" font-size="24" fill="#65716a">
+      <text x="80" y="562">Fresh air, winding trails, and a different pace.</text>
+      <text x="80" y="599">Find your next chapter in the mountains.</text>
+    </g>
+  </g>
+  <rect x="80" y="660" width="257" height="68" rx="34" fill="#283f3c"/>
+  <text x="112" y="703" fill="#f5f2e9" font-family="Arial, sans-serif" font-size="21">Explore the Alps ↗</text>
+  <g font-family="Arial, sans-serif" fill="#65716a" font-size="17">
+    <text x="80" y="824" letter-spacing="2">THOUGHTFULLY CURATED. WILD AT HEART.</text>
+    <text x="80" y="936">01 / Alpine escape</text>
+    <text x="1200" y="936">Less noise. More wonder.</text>
+  </g>
+  <path d="M80 882H1520" stroke="#cdd1c6"/>
+</svg>
