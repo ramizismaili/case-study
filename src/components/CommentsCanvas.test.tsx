@@ -256,31 +256,43 @@ jest.mock("@liveblocks/react-ui", () => {
                 )}
                 {thread.comments
                   .filter((comment) => comment.body)
-                  .map((comment) => (
-                    <div key={comment.id}>
-                      {typeof commentDropdownItems === "function"
-                        ? commentDropdownItems({
-                            comment,
-                            children: (
-                              <>
-                                <button
-                                  role="menuitem"
-                                  onClick={() => onCommentEdit?.(comment)}
-                                >
-                                  Edit comment
-                                </button>
-                                <button
-                                  role="menuitem"
-                                  onClick={() => onCommentDelete?.(comment)}
-                                >
-                                  Delete comment
-                                </button>
-                              </>
-                            ),
-                          })
-                        : commentDropdownItems}
-                    </div>
-                  ))}
+                  .map((comment) => {
+                    const children =
+                      comment.userId === mockCreatorId ? (
+                        <>
+                          <button
+                            role="menuitem"
+                            onClick={() => onCommentEdit?.(comment)}
+                          >
+                            Edit comment
+                          </button>
+                          <button
+                            role="menuitem"
+                            onClick={() => onCommentDelete?.(comment)}
+                          >
+                            Delete comment
+                          </button>
+                        </>
+                      ) : null;
+                    const content =
+                      typeof commentDropdownItems === "function"
+                        ? commentDropdownItems({ comment, children })
+                        : children;
+                    // Match the SDK: any truthy content, including an empty
+                    // fragment, creates a More trigger.
+                    return (
+                      <div key={comment.id}>
+                        {content && (
+                          <>
+                            <button aria-label={`More for ${comment.id}`}>
+                              More
+                            </button>
+                            {content}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </>
@@ -415,6 +427,33 @@ describe("thread action feedback", () => {
     );
     return view;
   }
+
+  it("omits empty menus on other authors' replies while retaining own actions and subscription", () => {
+    const first = mockThreads[0].comments[0];
+    mockThreads[0].comments = [
+      { ...first, userId: "user-1" },
+      { ...first, id: "cm_other", userId: "user-1" },
+      { ...first, id: "cm_mine", userId: "user-0" },
+    ];
+
+    openThread();
+
+    expect(
+      screen.queryByRole("button", { name: "More for cm_other" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "More for cm_mine" })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("menuitem", { name: "Edit comment" })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("menuitem", { name: "Delete comment" })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("menuitem", { name: "Subscribe to thread" })
+    ).toBeVisible();
+  });
 
   it.each([
     [false, "Resolve thread", "Thread resolved"],
@@ -988,7 +1027,7 @@ describe("comments with canvas navigation", () => {
     expect(mockEditThreadMetadata).not.toHaveBeenCalled();
   });
 
-  it("moves a growing thread upwards and makes oversized content scrollable", () => {
+  it("moves a growing thread upwards and bounds its outer container", () => {
     mockThreads = [
       makeThread("th_existing", {
         x: 0.8,
@@ -1012,7 +1051,7 @@ describe("comments with canvas navigation", () => {
     measurePopover(thread, { width: 350, height: 1000 });
 
     expect(thread).toHaveAttribute("data-align-offset", "-470");
-    expect(thread).toHaveStyle({ maxBlockSize: "540px", overflow: "auto" });
+    expect(thread).toHaveStyle({ maxBlockSize: "540px", overflow: "hidden" });
     expect(mockEditThreadMetadata).not.toHaveBeenCalled();
   });
 

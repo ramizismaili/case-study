@@ -34,6 +34,7 @@ export function DraggableThread({
 
   return (
     <FloatingThread
+      className="review-thread"
       thread={thread}
       open={open}
       onOpenChange={onOpenChange}
@@ -60,31 +61,37 @@ export function DraggableThread({
           commentId: comment.id,
         })
       }
-      commentDropdownItems={({ comment, children }) => (
-        <>
-          {canEdit &&
-            comment.id === thread.comments.find((item) => item.body)?.id && (
-              <Comment.DropdownItem
-                onSelect={() => {
-                  const subscribed = subscription.status === "subscribed";
-                  if (subscribed) subscription.unsubscribe();
-                  else subscription.subscribe();
-                  notify({
-                    action: subscribed
-                      ? "thread-unsubscribed"
-                      : "thread-subscribed",
-                    threadId: thread.id,
-                  });
-                }}
-              >
-                {subscription.status === "subscribed"
-                  ? "Unsubscribe from thread"
-                  : "Subscribe to thread"}
-              </Comment.DropdownItem>
-            )}
-          {children}
-        </>
-      )}
+      commentDropdownItems={({ comment, children }) => {
+        // Returning an empty fragment still makes Liveblocks render More.
+        if (
+          !canEdit ||
+          comment.id !== thread.comments.find((item) => item.body)?.id
+        ) {
+          return children;
+        }
+        return (
+          <>
+            <Comment.DropdownItem
+              onSelect={() => {
+                const subscribed = subscription.status === "subscribed";
+                if (subscribed) subscription.unsubscribe();
+                else subscription.subscribe();
+                notify({
+                  action: subscribed
+                    ? "thread-unsubscribed"
+                    : "thread-subscribed",
+                  threadId: thread.id,
+                });
+              }}
+            >
+              {subscription.status === "subscribed"
+                ? "Unsubscribe from thread"
+                : "Subscribe to thread"}
+            </Comment.DropdownItem>
+            {children}
+          </>
+        );
+      }}
       onSubmitCapture={(event) => {
         if (!canEdit) event.preventDefault();
       }}
@@ -98,6 +105,8 @@ export function DraggableThread({
       {...placement}
       style={{
         ...placement.style,
+        // The comment list scrolls independently; keep the reply box visible.
+        overflow: "hidden",
         pointerEvents: isDragging ? "none" : "auto",
       }}
     >

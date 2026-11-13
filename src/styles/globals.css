@@ -464,3 +464,28 @@ button:focus-visible {
     display: none;
   }
 }
+
+/* Flex children must be allowed to shrink inside the bounded popover. */
+.review-thread {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-thread > .lb-thread-comments {
+  min-block-size: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Liveblocks also uses a flex column for the feed. Each entry must retain
+   its natural height so overflow becomes scrollable instead of compressing text. */
+.review-thread > .lb-thread-comments > * {
+  flex-shrink: 0;
+}
+
+.review-thread > .lb-thread-composer {
+  flex: 0 0 auto;
+  max-block-size: min(240px, 30dvh);
+  overflow-y: auto;
+}
