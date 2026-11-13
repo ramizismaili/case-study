@@ -1,3 +1,9 @@
+## Live Demo
+
+The application is deployed on Vercel and available here:
+
+🔗 [View Image Review App](https://case-study-ruddy-gamma.vercel.app/)
+
 # Image Review
 
 ## Project overview
