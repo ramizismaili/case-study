@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadData } from "@liveblocks/client";
@@ -10,8 +17,14 @@ import type {
   FloatingThreadProps,
 } from "@liveblocks/react-ui";
 import { CommentsCanvas } from "./CommentsCanvas";
+import { ImageCanvas } from "./ImageCanvas";
 import { ImageCanvasContext } from "./ImageCanvasContext";
-import type { ViewportTransform } from "../lib/coordinates";
+import type { Point, ViewportTransform } from "../lib/coordinates";
+import {
+  loadCanvasImage,
+  mockCanvasPointerEvents,
+  mockCanvasResize,
+} from "../test/canvas-dom";
 
 type CreateThreadOptions = Parameters<ReturnType<typeof useCreateThread>>[0];
 let mockThreads: ThreadData[] = [];
@@ -148,33 +161,39 @@ function renderCanvas() {
   return { ...view, imageTarget, viewport };
 }
 
-// jsdom lacks PointerEvent. dnd-kit needs these fields for its real pointer sensor.
-const pointerEventDescriptor = Object.getOwnPropertyDescriptor(
-  window,
-  "PointerEvent"
-);
-class TestPointerEvent extends MouseEvent {
-  pointerId = 1;
-  isPrimary = true;
-  pointerType = "mouse";
-}
+let restorePointers: () => void;
 
 beforeEach(() => {
   mockThreads = [];
-  Object.defineProperty(window, "PointerEvent", {
-    configurable: true,
-    value: TestPointerEvent,
-  });
+  restorePointers = mockCanvasPointerEvents();
 });
 
 afterEach(() => {
+  cleanup();
+  restorePointers();
   jest.restoreAllMocks();
-  if (pointerEventDescriptor) {
-    Object.defineProperty(window, "PointerEvent", pointerEventDescriptor);
-  } else {
-    Reflect.deleteProperty(window, "PointerEvent");
-  }
 });
+
+function dragCommentPin(pin: HTMLElement, start: Point, end: Point) {
+  jest.useFakeTimers();
+  try {
+    fireEvent.pointerDown(pin, {
+      clientX: start.x,
+      clientY: start.y,
+      button: 0,
+    });
+    fireEvent.pointerMove(document, {
+      clientX: start.x + 10,
+      clientY: start.y,
+    });
+    fireEvent.pointerMove(document, { clientX: end.x, clientY: end.y });
+    fireEvent.pointerUp(document, { clientX: end.x, clientY: end.y });
+  } finally {
+    // dnd-kit delays removal of its document click listener after a drag.
+    act(() => jest.runOnlyPendingTimers());
+    jest.useRealTimers();
+  }
+}
 
 describe("image-anchored comments", () => {
   it("opens a composer at the clicked image point and persists normalized metadata once", async () => {
@@ -335,10 +354,7 @@ describe("image-anchored comments", () => {
     renderCanvas();
     const pin = screen.getByRole("button", { name: "Open comment thread" });
 
-    fireEvent.pointerDown(pin, { clientX: 380, clientY: 265, button: 0 });
-    fireEvent.pointerMove(document, { clientX: 390, clientY: 265 });
-    fireEvent.pointerMove(document, { clientX: 430, clientY: 240 });
-    fireEvent.pointerUp(document, { clientX: 430, clientY: 240 });
+    dragCommentPin(pin, { x: 380, y: 265 }, { x: 430, y: 240 });
 
     await waitFor(() =>
       expect(mockEditThreadMetadata).toHaveBeenCalledWith({
@@ -349,5 +365,195 @@ describe("image-anchored comments", () => {
     expect(mockEditThreadMetadata).toHaveBeenCalledTimes(1);
     expect(mockCreateThread).not.toHaveBeenCalled();
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
+  });
+});
+
+describe("comments with canvas navigation", () => {
+  let dimensions: ReturnType<typeof mockCanvasResize>;
+
+  beforeEach(() => {
+    dimensions = mockCanvasResize();
+  });
+
+  afterEach(() => {
+    cleanup();
+    dimensions.restore();
+  });
+
+  function renderInteractiveCanvas() {
+    render(
+      <ImageCanvas>
+        <CommentsCanvas />
+      </ImageCanvas>
+    );
+    const viewport = screen.getByRole("region", {
+      name: "Image review canvas",
+    });
+    dimensions.resize(viewport, { width: 1064, height: 564 });
+    const image = screen.getByAltText(
+      "Alpine escape travel design with an illustrated mountain landscape"
+    );
+    loadCanvasImage(image, { width: 1000, height: 500 });
+    const imageTarget = screen.getByRole("button", {
+      name: "Add a comment on the image",
+    });
+    const commentLayer = imageTarget.parentElement;
+    if (!commentLayer) throw new Error("Missing comment layer");
+    jest
+      .spyOn(commentLayer, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(30, 60, 1064, 564));
+    return { viewport, image, imageTarget };
+  }
+
+  function pan(target: HTMLElement) {
+    fireEvent.pointerDown(target, { clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(target, { clientX: 480, clientY: 260 });
+    fireEvent.pointerUp(target, { clientX: 480, clientY: 260 });
+  }
+
+  it("keeps the pin on its image point through zoom, pan, and reset without metadata writes", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.25,
+        y: 0.5,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { imageTarget, image } = renderInteractiveCanvas();
+    const pin = screen.getByRole("button", { name: "Open comment thread" });
+    expect(pin).toHaveStyle({ transform: "translate3d(282px, 282px, 0)" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    pan(imageTarget);
+
+    expect(image).toHaveStyle({
+      transform: "translate(-13px, -70.5px)",
+      width: "1250px",
+    });
+    expect(pin).toHaveStyle({ transform: "translate3d(299.5px, 242px, 0)" });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
+
+    expect(pin).toHaveStyle({ transform: "translate3d(282px, 282px, 0)" });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("suppresses the click after a drag but allows the next intentional click", () => {
+    const { imageTarget } = renderInteractiveCanvas();
+
+    pan(imageTarget);
+    fireEvent.click(imageTarget, { clientX: 480, clientY: 260, detail: 1 });
+
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(imageTarget, { clientX: 500, clientY: 300 });
+    fireEvent.pointerUp(imageTarget, { clientX: 500, clientY: 300 });
+    fireEvent.click(imageTarget, { clientX: 500, clientY: 300, detail: 1 });
+
+    expect(screen.getByRole("form", { name: "New comment" })).toBeVisible();
+  });
+
+  it("does not create a comment when a drag returns to its starting point", () => {
+    const { imageTarget, image } = renderInteractiveCanvas();
+
+    fireEvent.pointerDown(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(imageTarget, { clientX: 480, clientY: 260 });
+    fireEvent.pointerMove(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.pointerUp(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.click(imageTarget, { clientX: 400, clientY: 300, detail: 1 });
+
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(image).toHaveStyle({ transform: "translate(32px, 32px)" });
+  });
+
+  it("allows a comment click with minor pointer jitter", () => {
+    const { imageTarget, image } = renderInteractiveCanvas();
+
+    fireEvent.pointerDown(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(imageTarget, { clientX: 402, clientY: 302 });
+    fireEvent.pointerUp(imageTarget, { clientX: 402, clientY: 302 });
+    fireEvent.click(imageTarget, { clientX: 402, clientY: 302, detail: 1 });
+
+    expect(screen.getByRole("form", { name: "New comment" })).toBeVisible();
+    expect(image).toHaveStyle({ transform: "translate(32px, 32px)" });
+  });
+
+  it("persists the correct anchor for a click after pan and zoom", async () => {
+    const user = userEvent.setup();
+    const { imageTarget } = renderInteractiveCanvas();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    pan(imageTarget);
+    fireEvent.click(imageTarget, { clientX: 480, clientY: 260, detail: 1 });
+
+    fireEvent.pointerDown(imageTarget, { clientX: 329.5, clientY: 302 });
+    fireEvent.pointerUp(imageTarget, { clientX: 329.5, clientY: 302 });
+    fireEvent.click(imageTarget, { clientX: 329.5, clientY: 302, detail: 1 });
+    await user.type(
+      screen.getByRole("textbox", { name: "Comment" }),
+      "Anchored after navigation"
+    );
+    await user.click(screen.getByRole("button", { name: "Send comment" }));
+
+    expect(mockCreateThread).toHaveBeenCalledTimes(1);
+    expect(mockCreateThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: { x: 0.25, y: 0.5, coordinateSpace: "image", zIndex: 1 },
+      })
+    );
+  });
+
+  it("lets users drag a pin at the current scale without panning the canvas", async () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.25,
+        y: 0.5,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { image, viewport } = renderInteractiveCanvas();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const pin = screen.getByRole("button", { name: "Open comment thread" });
+
+    dragCommentPin(pin, { x: 300, y: 300 }, { x: 425, y: 300 });
+
+    await waitFor(() =>
+      expect(mockEditThreadMetadata).toHaveBeenCalledWith({
+        threadId: "th_existing",
+        metadata: { x: 0.35, y: 0.5, coordinateSpace: "image", zIndex: 2 },
+      })
+    );
+    expect(image).toHaveStyle({ transform: "translate(-93px, -30.5px)" });
+    expect(viewport).not.toHaveAttribute("data-panning");
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+  });
+
+  it("does not pan when interacting with the comment editor", async () => {
+    const user = userEvent.setup();
+    const { imageTarget, image } = renderInteractiveCanvas();
+    fireEvent.click(imageTarget, { clientX: 312, clientY: 342, detail: 1 });
+    const editor = screen.getByRole("textbox", { name: "Comment" });
+
+    pan(editor);
+    await user.type(editor, "Typing stays in the editor");
+
+    expect(editor).toHaveValue("Typing stays in the editor");
+    expect(image).toHaveStyle({ transform: "translate(32px, 32px)" });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("does not create a comment after pointer cancellation", () => {
+    const { imageTarget } = renderInteractiveCanvas();
+
+    fireEvent.pointerDown(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.pointerCancel(imageTarget);
+    fireEvent.click(imageTarget, { clientX: 400, clientY: 300, detail: 1 });
+
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(mockCreateThread).not.toHaveBeenCalled();
   });
 });

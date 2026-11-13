@@ -93,6 +93,16 @@ button:focus-visible {
   background-size: 16px 16px;
 }
 
+[data-canvas-surface] {
+  touch-action: none;
+  cursor: grab;
+}
+
+.image-viewport[data-panning] [data-canvas-surface],
+.image-viewport[data-panning] {
+  cursor: grabbing;
+}
+
 .canvas-image {
   position: absolute;
   top: 0;
@@ -124,11 +134,59 @@ button:focus-visible {
   padding: 0;
   border: 0;
   background: transparent;
-  cursor: crosshair;
 }
 
 .comment-pins {
   isolation: isolate;
+}
+
+.zoom-controls {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid #dce2dc;
+  border-radius: 12px;
+  background: #fafbf9;
+  box-shadow: 0 4px 18px #20342d12;
+}
+
+.zoom-controls button {
+  min-width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #20342d;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover:not(:disabled) {
+  background: #e7eee8;
+}
+
+.zoom-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.zoom-controls output {
+  min-width: 52px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-controls .reset-view {
+  padding: 0 10px;
+  border-left: 1px solid #dce2dc;
+  border-radius: 0 7px 7px 0;
+  font-size: 12px;
 }
 
 .canvas-notice {

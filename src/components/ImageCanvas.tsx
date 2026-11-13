@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type PropsWithChildren } from "react";
-import { getImageTransform, type Size } from "../lib/coordinates";
+import type { Size } from "../lib/coordinates";
 import { ImageCanvasContext } from "./ImageCanvasContext";
+import { useCanvasView } from "../hooks/useCanvasView";
+import { ZoomControls } from "./ZoomControls";
 
 export function ImageCanvas({ children }: PropsWithChildren) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -33,7 +35,15 @@ export function ImageCanvas({ children }: PropsWithChildren) {
     return () => observer.disconnect();
   }, []);
 
-  const transform = getImageTransform(imageSize, viewportSize);
+  const {
+    transform,
+    zoom,
+    isPanning,
+    zoomIn,
+    zoomOut,
+    resetView,
+    viewportHandlers,
+  } = useCanvasView(imageSize, viewportSize);
 
   return (
     <main className="review-app">
@@ -54,6 +64,9 @@ export function ImageCanvas({ children }: PropsWithChildren) {
         className="image-viewport"
         role="region"
         aria-label="Image review canvas"
+        data-canvas-surface
+        data-panning={isPanning || undefined}
+        {...viewportHandlers}
       >
         <img
           ref={imageRef}
@@ -61,6 +74,7 @@ export function ImageCanvas({ children }: PropsWithChildren) {
           src="/review-board.svg"
           alt="Alpine escape travel design with an illustrated mountain landscape"
           draggable={false}
+          data-canvas-surface
           onLoad={(event) => {
             setImageSize({
               width: event.currentTarget.naturalWidth,
@@ -80,6 +94,13 @@ export function ImageCanvas({ children }: PropsWithChildren) {
         <ImageCanvasContext.Provider value={{ imageSize, transform }}>
           {children}
         </ImageCanvasContext.Provider>
+        <ZoomControls
+          zoom={zoom}
+          disabled={!transform || isPanning}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
+          onReset={resetView}
+        />
         <span className="canvas-caption">Alpine escape / Cover concept</span>
       </div>
       <footer className="review-footer">

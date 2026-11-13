@@ -86,6 +86,7 @@ export function CommentsCanvas() {
     <div
       ref={canvasRef}
       className="comments-canvas"
+      data-canvas-surface
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           setDraftAnchor(null);
@@ -96,6 +97,7 @@ export function CommentsCanvas() {
       <button
         type="button"
         className="image-comment-target"
+        data-canvas-surface
         aria-label="Add a comment on the image"
         onClick={handleImageClick}
         style={{
