@@ -2,11 +2,23 @@
 
 import { LiveblocksProvider } from "@liveblocks/react";
 import { PropsWithChildren, Suspense } from "react";
+import { getDemoUserId } from "../lib/demo-user";
 
 export function Providers({ children }: PropsWithChildren) {
   return (
     <LiveblocksProvider
-      authEndpoint="/api/liveblocks-auth"
+      authEndpoint={async () => {
+        const response = await fetch("/api/liveblocks-auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: getDemoUserId(window.sessionStorage),
+          }),
+        });
+        if (!response.ok)
+          throw new Error("Unable to authenticate shared comments");
+        return response.json();
+      }}
       // Get users' info from their ID
       resolveUsers={async ({ userIds }) => {
         const searchParams = new URLSearchParams(

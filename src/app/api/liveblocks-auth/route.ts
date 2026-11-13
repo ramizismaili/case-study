@@ -1,5 +1,6 @@
 import { Liveblocks } from "@liveblocks/node";
 import { NAMES } from "../../../database";
+import { isDemoUserId } from "../../../lib/demo-user";
 import { NextResponse } from "next/server";
 
 /**
@@ -7,7 +8,7 @@ import { NextResponse } from "next/server";
  * https://liveblocks.io/docs/api-reference/authentication
  */
 
-export async function POST() {
+export async function POST(request: Request) {
   const secret = process.env.LIVEBLOCKS_SECRET_KEY;
   if (!secret) {
     return new NextResponse("Missing LIVEBLOCKS_SECRET_KEY", { status: 403 });
@@ -16,8 +17,12 @@ export async function POST() {
   // Initialize only after checking configuration, so builds work without a key.
   const liveblocks = new Liveblocks({ secret });
 
-  // Demo-only identity from the official starter; not production authentication.
-  const userIndex = Math.floor(Math.random() * NAMES.length);
+  // Client-selected demo identity; this is not production authentication.
+  const input = await request.json().catch(() => null);
+  if (!isDemoUserId(input?.userId)) {
+    return new NextResponse("Invalid demo identity", { status: 400 });
+  }
+  const userIndex = Number(input.userId.slice(5));
 
   // Create a session for the current user (access token auth)
   const session = liveblocks.prepareSession(`user-${userIndex}`, {

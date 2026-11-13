@@ -1,120 +1,146 @@
-# Full Stack Developer Case Study
+# Image Review
 
-Thank you for taking part in our hiring process. This case study is the second stage. It has one required coding task (Part B) and one optional written task (Part A).
+## Project overview
 
-**Deadline:** please submit within **72 hours** of receiving this link.
+Image Review is a collaborative canvas for discussing specific points on an image. Reviewers create anchored comment threads, move around the image, and manage conversations while Liveblocks synchronizes shared changes.
 
-# Rules
+Built for a Full Stack Developer hiring case study from the official Liveblocks Next.js canvas comments starter. The [original assignment](docs/ASSIGNMENT.md) includes the supplied design references; those images are references, not screenshots of this implementation.
 
-1. **AI tools are allowed.** You may use any AI coding tools you like (Copilot, Cursor, Claude, ChatGPT and similar). The team you would join uses AI every day. What matters is that the result is good and that you understand it.
-2. **You will explain it live.** If you move to the next stage, you will walk the team through your code and explain your decisions, line by line if asked. Only submit code you can fully explain, whoever or whatever wrote it.
-3. **Add an AI usage note.** In your README, add a short section called "AI usage" covering: which tools you used, what you used them for, and at least one thing the AI got wrong or that you changed, and why.
-4. **Commit in small steps.** Make regular commits with clear messages as you work. Your commit history helps us see your process.
-5. **Partial is fine.** Focus on doing the core features well. A clean, working subset beats a rushed, complete one.
+## Features
 
-# Part B: Image Commenting App (Required)
+- Image-anchored threads that retain their positions through pan and zoom.
+- Draggable comment pins and adaptive left/right thread placement.
+- Replies, editing, deletion, resolution, and thread subscriptions through Liveblocks UI.
+- Zoom controls, reset view, and responsive popover sizing.
+- Action notifications, connection feedback, image retry, and failed-comment text recovery.
 
-Build a React app that lets users add comments to an image on a canvas, similar to commenting in design tools like Figma. Use [Liveblocks](https://liveblocks.io/docs) as the real time collaboration layer.
+## Tech stack
 
-## Starter code
+| Layer              | Technology                                            |
+| ------------------ | ----------------------------------------------------- |
+| Application        | Next.js App Router, React, TypeScript                 |
+| Collaboration      | Liveblocks Comments and React UI                      |
+| Pin dragging       | dnd-kit                                               |
+| Layout and styling | CSS, DOM measurements, ResizeObserver                 |
+| Automated tests    | Jest via next/jest, React Testing Library, user-event |
 
-Start from the official Liveblocks canvas comments example:
-[Liveblocks Canvas Comments Example](https://github.com/liveblocks/liveblocks/tree/main/examples/nextjs-comments-canvas)
+## Getting started
 
-Clone it, run `npm install` and `npm run dev`, and build from there.
+Use Node.js 24 and npm (the implementation was verified with Node 24). Install the locked dependencies:
 
-**Liveblocks key:** the example needs a Liveblocks API key. Create a free account at [liveblocks.io](https://liveblocks.io), copy your secret key from the dashboard, and follow the example's README to add it to `.env.local`. Do **not** commit your key.
+```sh
+npm ci
+```
 
-## Core features
+Create `.env.local` in the project root with your Liveblocks project's **secret** key:
 
-**1. Image comments**
+```dotenv
+LIVEBLOCKS_SECRET_KEY=your_liveblocks_secret_key
+```
 
-* Click anywhere on the image to add a comment anchored to that exact spot.
-* Comment threads flip between left and right alignment based on position. If a comment is too close to the right edge of the image, it should open inwards.
-* Comment positions must stay correct at every zoom level, so each comment stays on its original anchor point.
+Keep this file private; it is ignored by Git. The key is read only by the server. Restart the development server after changing it.
 
-**2. Canvas interactions**
+```sh
+npm run dev
+```
 
-* Drag the image to pan.
-* Zoom in and out controls.
-* Comments keep their position relative to the image while panning and zooming.
+Open http://localhost:3000. Without a key, the image and navigation still work and the canvas explains how to enable shared comments.
 
-## Optional features
+For a production build locally:
 
-* Responsive design for different screen sizes.
-* Editing existing comments.
+```sh
+npm run build
+npm start
+```
 
-## Design reference
+## Usage
 
-Use these as a guide. Working functionality matters more than matching the design exactly.
+- Click an image point to start a comment. Keyboard activation of the image button places the draft at the image center. Escape closes the draft or open thread.
+- Drag the image or canvas background to pan. Small pointer movements are treated as clicks; a completed pan does not create a comment.
+- Zoom from 25% to 400% of the fitted view. Reset restores the centered, fitted image.
+- Click a pin to open its thread; drag a pin to change its image anchor.
+- Use the thread controls to reply, edit, delete, resolve, or subscribe. Action notifications appear at the top right. Changes appear immediately; a saving hint remains until Liveblocks synchronization settles.
+- The header light indicates connection state. Connection failures offer reconnect; image failures offer retry. Failed comment text remains available to copy, but attachments must be reattached.
 
-![Comment input on image](assets/example-1.png)
+To check collaboration, open the same URL in two tabs and add or move a comment. For a separate test room, use the same `?exampleId=your-test-name` query in both tabs. Reload to check persistence. Pan and zoom are independent in each tab.
 
-![Comment pin on image](assets/example-2.png)
+## Architecture and technical decisions
 
-![Comment thread expanded](assets/example-3.png)
+`ImageCanvas` owns image loading, viewport measurement, and local view state. `Room` owns the Liveblocks room and loading/error boundaries. `CommentsCanvas` connects persisted threads to canvas interactions; `ThreadComposer` and `DraggableThread` retain Liveblocks' editor, thread UI, and mutation APIs.
 
-You may improve the design or add libraries if they help usability. Any icon library is fine.
+### Stable image anchors
 
-## How we evaluate
+**Challenge:** Keep comments attached to the same image point through zoom, pan, and viewport changes.
 
-Since AI tools are allowed, we care most about the quality of your decisions: how the code is structured, how you solved the hard parts (comments staying anchored through zoom and pan, the left and right flip), how you handle errors, and how well you can explain all of it.
+**Solution:** Store normalized image coordinates and derive CSS-pixel positions from the current view transform.
 
-* **Functionality:** does the app work as expected?
-* **Code quality:** is the code organised, clean, maintainable and testable?
-* **State management:** is state handled efficiently across components?
-* **Error handling:** how does the app behave when things go wrong (for example a failed connection, an empty comment, or an image that does not load)?
-* **UI and UX:** is the experience thoughtful and easy to use?
+**Rationale:** Shared anchors stay independent of each reviewer's screen size and navigation state.
 
-**Time expectation:** about 4 hours.
+New threads store `{ x, y, coordinateSpace: "image", zIndex }` in Liveblocks metadata. `x` and `y` are fractions of the natural image dimensions: `(0, 0)` is the top-left and `(1, 1)` the bottom-right. The image is initially fitted without cropping or upscaling. User zoom multiplies that fitted scale; pan is measured in CSS pixels.
 
-# Part A: Product Thinking (Optional)
+For the horizontal axis (and equivalently for the vertical axis):
 
-This part is optional. Complete it if you have time. It is a good chance to show how you think about building the right thing, not just building things right.
+```text
+viewportX = imageOriginX + anchorX * naturalImageWidth * scale
+anchorX = (viewportX - imageOriginX) / (naturalImageWidth * scale)
+```
 
-Write your answer in `RESPONSE.md`. No code is needed. Expect about 60 to 90 minutes.
+Browser pointer coordinates first subtract the canvas element's current bounding rectangle. Image coordinates are not clamped during click detection, so clicks outside the image can be rejected. Pin drags convert their CSS-pixel displacement back to image fractions. Legacy starter threads without a coordinate-space marker retain their original viewport-pixel positions until moved.
 
-## The request
+Pure helpers in `src/lib` implement conversion, image boundaries, pan calculations, zoom limits, and placement. `useCanvasView` handles pointer capture, cancellation, and click suppression. Zoom preserves the image point under the viewport center. `ImageCanvasContext` shares the current transform without persisting view state to Liveblocks.
 
-A customer of a content review platform has asked for this feature:
+### Adaptive thread placement
 
-> "Users should be prevented from submitting for review until all AI suggestions have been actively reviewed and given a response."
+**Challenge:** Keep threads readable near image edges and in small viewports.
 
-## Product context
+**Solution:** Measure the popover and choose its side and offsets from the available space. **Rationale:** Actual content dimensions account for long threads and text wrapping without moving the persisted anchor.
 
-The platform helps teams prepare content before it goes to a human reviewer for approval. A typical flow:
+`useThreadPlacement` measures the actual popover with `ResizeObserver`. Placement prefers opening inward near the image's right edge, then prioritizes available canvas space. It clamps the popover within the visible canvas, limits its dimensions, and allows scrolling or pin overlap on small screens. Offscreen anchors hide the popover without discarding its mounted draft.
 
-1. A user creates or edits a piece of content.
-2. The platform's AI generates suggestions about issues in that content.
-3. The user can look through those suggestions.
-4. The user submits the content for human review.
+### Collaboration and recovery
 
-Today, users can submit for review without explicitly responding to the AI suggestions.
+Liveblocks owns persisted comments and optimistic mutations; React owns local navigation, drafts, and feedback. This retains the SDK editor and synchronization behavior while keeping canvas geometry independently testable.
 
-You have also heard from three stakeholders:
+`CollaborationStatus` scopes SDK errors to the active room, preserves failed text, and provides action notifications through React context. Portals place notifications above the canvas and the connection indicator in the header. Success notices dismiss automatically after saving, pause while hovered or focused, and can be dismissed manually. Error notices persist. Author identity uses the non-suspending hook so opening the first draft does not replace existing comments with a loading screen.
 
-* One says users skip obvious AI suggestions, which creates unnecessary review rounds.
-* Another wants a clearer audit trail showing that suggestions were considered.
-* A third worries that a blanket rule will add friction and slow people down.
+## Testing and verification
 
-## Your task
+```sh
+npm test -- --runInBand
+npm run typecheck
+npm run build
+```
 
-Answer three things in `RESPONSE.md`:
+`npm test` runs Jest through `next/jest`; component tests use React Testing Library and user-event. `npm run test:watch` is available during development.
 
-1. **Questions you would ask.** What would you ask the customer or internal stakeholders to understand the problem and avoid building the wrong thing?
-2. **How you would learn more without them.** The customer is unavailable for a week. What data, product behaviour, people or other sources would you look at to reduce uncertainty?
-3. **A developer ready ticket.** Write the ticket you would hand to engineering. It should be specific enough to estimate and start work, and should clearly list open questions, assumptions and dependencies.
+| Area         | Test files                                      | Behaviors covered                                                                                                 |
+| ------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Coordinates  | `coordinates.test.ts`, `thread-anchors.test.ts` | Conversion, zoom accuracy, client offsets, boundaries, legacy anchors, pin movement                               |
+| Navigation   | `canvas-view.test.ts`                           | Pan offsets, drag threshold, zoom limits, center preservation                                                     |
+| Placement    | `thread-placement.test.ts`                      | Side selection, overflow, growing content, small viewports                                                        |
+| Image canvas | `ImageCanvas.test.tsx`                          | Controls, reset, cancellation, loading/retry, cached images, resize                                               |
+| Comments     | `CommentsCanvas.test.tsx`                       | Creation, metadata, drag/click separation, offline/empty guards, placement, notifications, first-draft regression |
+| Recovery     | `Room.test.tsx`, `comment-body.test.ts`         | Connection errors, notification timing, failed text, rich-text validation                                         |
 
-You do not need to design the UI in detail. Make reasonable assumptions and label them clearly. We care more about your thinking than finding one correct answer.
+Tests mock Liveblocks network hooks and editor/popover components where needed; application coordinate logic and dnd-kit interactions remain real. DOM measurements and pointer capture are controlled for deterministic jsdom tests. These tests do not replace a real-browser collaboration check or prove behavior against a failing live service. Browser checks during implementation covered loaded/cached images, zoom/reset, opening threads and drafts, and the notification/header UI; two-client persistence and synchronization were checked during the anchored-comments milestone.
 
-# How to submit
+## Known limitations
 
-1. Click **Use this template** at the top of this repository to create your own copy (or clone it).
-2. Build Part B in your repository, and add setup instructions to your README so we can run it in a few minutes.
-3. If you do Part A, write it in `RESPONSE.md`.
-4. Push your work to your own GitHub repository. If it is private, give access to this GitHub account.
-5. Email the link to **info@limitlessoutsourcing.com** with the subject "Case Study: Your Full Name".
+- Authentication uses a client-selected demo identity stored in sessionStorage, retained across authentication requests and reloads in that tab. It retains the starter's broad demo-room write permission. This is not production authentication: users can select another demo identity, and a real deployment needs authenticated identities and explicit room authorization. Clearing session storage creates a new selection; different tabs may select the same demo person.
+- The app reviews one bundled image (`public/review-board.svg`); uploading or switching images is outside this assignment.
+- Panning has no bounds, and wheel/pinch zoom is not implemented. Reset recovers the fitted view.
+- Notification saving state uses the client's aggregate synchronization status, so another outstanding mutation can keep the saving hint visible.
+- Async failure recovery preserves plain text rather than rich formatting or uploaded attachments. Offline commenting is disabled while image navigation remains usable.
+- Next.js currently emits a React 18 deprecation warning during the successful build. A React major-version migration was kept outside this assignment's implementation scope.
 
-Good luck. We look forward to seeing your work.
+## AI usage
 
-Limitless Outsourcing Team
+OpenAI Codex assisted with starter inspection, incremental implementation, Jest/React Testing Library tests, debugging, code review, and documentation. Implementation milestones were reviewed and committed manually by the developer; Codex did not stage files or create commits.
+
+Specific mistakes and corrections:
+
+- **Cached image loading:** The initial implementation relied on `onLoad`. An image loaded before hydration could leave the canvas hidden. Browser inspection exposed this; the fix checks `complete` and natural dimensions on mount, with a regression test.
+- **First-draft loading:** A Suspense identity hook could replace existing comments with the loader when opening the first draft. A failing regression test reproduced it; the optional identity lookup now uses the non-suspending hook.
+- **Notification wording:** After developer feedback, “Adding comment…” became “Comment added” to match the optimistic UI, with a separate saving hint until synchronization completes.
+
+- **Author identity mismatch:** The draft avatar could change to another person after submitting. The starter auth endpoint selected a random user on every request, and this was initially left unchanged. The fix selects one demo identity per tab, reuses it for every authentication request, and validates it against the demo user list on the server. Regression tests cover identity reuse and invalid identities.
