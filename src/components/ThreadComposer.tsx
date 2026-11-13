@@ -16,6 +16,7 @@ import {
 } from "../lib/coordinates";
 
 type ThreadComposerProps = {
+  suspended?: boolean;
   anchor: ImagePoint;
   imageSize: Size;
   transform: ViewportTransform;
@@ -24,6 +25,7 @@ type ThreadComposerProps = {
 };
 
 export function ThreadComposer({
+  suspended = false,
   anchor,
   imageSize,
   transform,
@@ -61,6 +63,10 @@ export function ThreadComposer({
       <FloatingComposer
         key={recovery.revision}
         {...placement}
+        style={{
+          ...placement.style,
+          ...(suspended ? { visibility: "hidden", pointerEvents: "none" } : {}),
+        }}
         disabled={status !== "connected"}
         defaultValue={recovery.comment?.body}
         defaultAttachments={recovery.comment?.attachments}
@@ -70,7 +76,7 @@ export function ThreadComposer({
         }}
         open
         onOpenChange={(open) => {
-          if (!open) onCancel();
+          if (!open && !suspended) onCancel();
         }}
         metadata={metadata}
         onComposerSubmit={(comment, event) => {
@@ -106,11 +112,13 @@ export function ThreadComposer({
         }}
       >
         <CommentPin
+          className="lb-portal"
           data-cursor-surface
           userId={creatorId}
           corner="top-left"
           aria-label="Cancel new comment"
           style={{
+            visibility: suspended ? "hidden" : undefined,
             position: "absolute",
             top: 0,
             left: 0,

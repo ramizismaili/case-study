@@ -8,9 +8,15 @@ import {
   type MouseEvent,
   type PointerEvent,
 } from "react";
-import { getImageTransform, type Point, type Size } from "../lib/coordinates";
+import {
+  getImageTransform,
+  type ImagePoint,
+  type Point,
+  type Size,
+} from "../lib/coordinates";
 import {
   hasDragged,
+  focusImagePoint,
   panFromPointer,
   zoomAtCenter,
   ZOOM_STEP,
@@ -162,6 +168,13 @@ export function useCanvasView(imageSize: Size, viewportSize: Size) {
     setView({ pan: { x: 0, y: 0 }, zoom: 1 });
   }
 
+  function focusAnchor(anchor: ImagePoint) {
+    cancelGesture();
+    setView((previous) =>
+      focusImagePoint(previous, anchor, imageSize, viewportSize)
+    );
+  }
+
   return {
     transform,
     zoom: view.zoom,
@@ -169,6 +182,7 @@ export function useCanvasView(imageSize: Size, viewportSize: Size) {
     zoomIn: () => changeZoom(ZOOM_STEP),
     zoomOut: () => changeZoom(-ZOOM_STEP),
     resetView,
+    focusAnchor,
     viewportHandlers: {
       onPointerDown,
       onPointerMove,

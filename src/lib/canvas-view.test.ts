@@ -5,8 +5,62 @@ import {
   hasDragged,
   panFromPointer,
   zoomAtCenter,
+  focusImagePoint,
 } from "./canvas-view";
-import { getImageTransform, viewportToImage } from "./coordinates";
+import {
+  getImageTransform,
+  imageToViewport,
+  viewportToImage,
+} from "./coordinates";
+
+describe("focusing image anchors", () => {
+  it.each([0.25, 1, 2, 4])(
+    "centers an anchor without changing zoom %s",
+    (zoom) => {
+      const image = { width: 1600, height: 1000 };
+      for (const viewport of [
+        { width: 1000, height: 700 },
+        { width: 580, height: 500 },
+      ]) {
+        const anchor = { x: 0.9, y: 0.1 };
+        const next = focusImagePoint(
+          { pan: { x: -900, y: 350 }, zoom },
+          anchor,
+          image,
+          viewport
+        );
+        const point = imageToViewport(
+          anchor,
+          image,
+          getImageTransform(image, viewport, next.pan, next.zoom)!
+        );
+        expect(point.x).toBeCloseTo(viewport.width / 2);
+        expect(point.y).toBeCloseTo(viewport.height / 2);
+        expect(next.zoom).toBe(zoom);
+        expect(anchor).toEqual({ x: 0.9, y: 0.1 });
+      }
+    }
+  );
+  it("ignores unavailable geometry and invalid coordinates", () => {
+    const view = { pan: { x: 10, y: 20 }, zoom: 1 };
+    expect(
+      focusImagePoint(
+        view,
+        { x: NaN, y: 0.5 },
+        { width: 1000, height: 500 },
+        { width: 800, height: 600 }
+      )
+    ).toBe(view);
+    expect(
+      focusImagePoint(
+        view,
+        { x: 0.5, y: 0.5 },
+        { width: 0, height: 0 },
+        { width: 800, height: 600 }
+      )
+    ).toBe(view);
+  });
+});
 
 describe("canvas zoom", () => {
   it.each([

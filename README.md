@@ -20,6 +20,7 @@ Built for a Full Stack Developer hiring case study from the official Liveblocks 
 - Zoom controls, reset view, and responsive popover sizing.
 - Action notifications, connection feedback, image retry, and failed-comment text recovery.
 - Live image-relative collaborator cursors and a compact online avatar group.
+- Collapsible comments sidebar with thread previews, status, and click-to-focus navigation.
 
 ## Tech stack
 
@@ -66,6 +67,7 @@ npm start
 - Drag the image or canvas background to pan. Small pointer movements are treated as clicks; a completed pan does not create a comment.
 - Zoom from 25% to 400% of the fitted view. Reset restores the centered, fitted image.
 - Click a pin to open its thread; drag a pin to change its image anchor.
+- Select a sidebar thread to center its pin and open the conversation at the current zoom. The sidebar scrolls independently and can be collapsed; it starts collapsed on narrow screens. Browsing threads preserves reply drafts. Use “Resume new comment” to return to an unfinished new thread.
 - Use the thread controls to reply, edit, delete, resolve, or subscribe. Action notifications appear at the top right. Changes appear immediately; a saving hint remains until Liveblocks synchronization settles.
 - The header light indicates connection state. Connection failures offer reconnect; image failures offer retry. Failed comment text remains available to copy, but attachments must be reattached.
 
@@ -97,6 +99,10 @@ anchorX = (viewportX - imageOriginX) / (naturalImageWidth * scale)
 Browser pointer coordinates first subtract the canvas element's current bounding rectangle. Image coordinates are not clamped during click detection, so clicks outside the image can be rejected. Pin drags convert their CSS-pixel displacement back to image fractions. Legacy starter threads without a coordinate-space marker retain their original viewport-pixel positions until moved.
 
 Pure helpers in `src/lib` implement conversion, image boundaries, pan calculations, zoom limits, and placement. `useCanvasView` handles pointer capture, cancellation, and click suppression. Zoom preserves the image point under the viewport center. `ImageCanvasContext` shares the current transform without persisting view state to Liveblocks.
+
+The sidebar uses the same `useThreads` result as the canvas. Selection calls `focusImagePoint` through the canvas context, changes only local pan, highlights the pin, and opens its existing Liveblocks thread. The sidebar occupies a sibling layout column, so `ResizeObserver` measures the remaining canvas width for transforms and popover placement. Selecting a legacy viewport-coordinate thread derives a temporary local image anchor through the compatibility utilities; its saved metadata remains unchanged until a normal pin drag.
+
+New-comment composers remain mounted but hidden while browsing threads. Reply composers use the SDK `Composer` with its normal submission and attachment behavior. `usePersistentComposer` keeps each visited reply editor mounted in a detached DOM container when its floating thread closes and reattaches it on reopening. This preserves rich drafts without copying collaborative data or implementing another editor. These drafts last for the current page session, not a reload.
 
 ### Adaptive thread placement
 
@@ -133,6 +139,7 @@ npm run build
 | Comments     | `CommentsCanvas.test.tsx`                       | Creation, metadata, drag/click separation, offline/empty guards, placement, notifications, first-draft regression |
 | Recovery     | `Room.test.tsx`, `comment-body.test.ts`         | Connection errors, notification timing, failed text, rich-text validation                                         |
 | Presence     | `CollaborationPresence.test.tsx`               | Remote-only cursors, pan/zoom/resize mapping, throttling and cleanup, malformed presence, avatar counts and fallbacks |
+| Sidebar      | `CommentsSidebar.test.tsx`, `CommentsCanvas.test.tsx`, `canvas-view.test.ts` | Thread updates, keyboard selection, collapse/expand, focus at different zoom levels, legacy anchors, resize, and draft preservation |
 
 Tests mock Liveblocks network hooks and editor/popover components where needed; application coordinate logic and dnd-kit interactions remain real. DOM measurements and pointer capture are controlled for deterministic jsdom tests. These tests do not replace a real-browser collaboration check or prove behavior against a failing live service. Browser checks during implementation covered loaded/cached images, zoom/reset, opening threads and drafts, and the notification/header UI; two-client persistence and synchronization were checked during the anchored-comments milestone.
 

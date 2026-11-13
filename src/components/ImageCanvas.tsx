@@ -60,6 +60,7 @@ export function ImageCanvas({ children }: PropsWithChildren) {
     zoomIn,
     zoomOut,
     resetView,
+    focusAnchor,
     viewportHandlers,
   } = useCanvasView(imageSize, viewportSize);
 
@@ -81,75 +82,84 @@ export function ImageCanvas({ children }: PropsWithChildren) {
           <span id="collaboration-indicator" />
         </div>
       </header>
-      <div
-        ref={viewportRef}
-        className="image-viewport"
-        role="region"
-        aria-label="Image review canvas"
-        aria-describedby="canvas-instructions"
-        aria-busy={imageStatus === "loading"}
-        data-canvas-surface
-        data-panning={isPanning || undefined}
-        {...viewportHandlers}
-      >
-        <img
-          key={imageAttempt}
-          ref={imageRef}
-          className="canvas-image"
-          src={
-            imageAttempt === 0
-              ? "/review-board.svg"
-              : `/review-board.svg?retry=${imageAttempt}`
-          }
-          alt="Alpine escape travel design with an illustrated mountain landscape"
-          draggable={false}
+      <div className="review-workspace">
+        <div
+          ref={viewportRef}
+          className="image-viewport"
+          role="region"
+          aria-label="Image review canvas"
+          aria-describedby="canvas-instructions"
+          aria-busy={imageStatus === "loading"}
           data-canvas-surface
-          onLoad={(event) => imageLoaded(event.currentTarget)}
-          onError={imageFailed}
-          style={
-            transform
-              ? {
-                  width: imageSize.width * transform.scale,
-                  height: imageSize.height * transform.scale,
-                  transform: `translate(${transform.origin.x}px, ${transform.origin.y}px)`,
-                }
-              : { visibility: "hidden" }
-          }
-        />
-        {imageStatus === "loading" && (
-          <div className="image-notice" role="status">
-            Loading image…
-          </div>
-        )}
-        {imageStatus === "error" && (
-          <div className="image-notice" role="alert">
-            <strong>The image could not be loaded</strong>
-            <span>Check your connection and try again.</span>
-            <button
-              type="button"
-              onClick={() => {
-                setImageStatus("loading");
-                setImageAttempt((attempt) => attempt + 1);
-                resetView();
-              }}
-            >
-              Retry image
-            </button>
-          </div>
-        )}
-        <ImageCanvasContext.Provider
-          value={{ viewportRef, imageSize, transform, viewportSize }}
+          data-panning={isPanning || undefined}
+          {...viewportHandlers}
         >
-          {children}
-        </ImageCanvasContext.Provider>
-        <ZoomControls
-          zoom={zoom}
-          disabled={!transform || isPanning}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onReset={resetView}
-        />
-        <span className="canvas-caption">Alpine escape / Cover concept</span>
+          <img
+            key={imageAttempt}
+            ref={imageRef}
+            className="canvas-image"
+            src={
+              imageAttempt === 0
+                ? "/review-board.svg"
+                : `/review-board.svg?retry=${imageAttempt}`
+            }
+            alt="Alpine escape travel design with an illustrated mountain landscape"
+            draggable={false}
+            data-canvas-surface
+            onLoad={(event) => imageLoaded(event.currentTarget)}
+            onError={imageFailed}
+            style={
+              transform
+                ? {
+                    width: imageSize.width * transform.scale,
+                    height: imageSize.height * transform.scale,
+                    transform: `translate(${transform.origin.x}px, ${transform.origin.y}px)`,
+                  }
+                : { visibility: "hidden" }
+            }
+          />
+          {imageStatus === "loading" && (
+            <div className="image-notice" role="status">
+              Loading image…
+            </div>
+          )}
+          {imageStatus === "error" && (
+            <div className="image-notice" role="alert">
+              <strong>The image could not be loaded</strong>
+              <span>Check your connection and try again.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setImageStatus("loading");
+                  setImageAttempt((attempt) => attempt + 1);
+                  resetView();
+                }}
+              >
+                Retry image
+              </button>
+            </div>
+          )}
+          <ImageCanvasContext.Provider
+            value={{
+              viewportRef,
+              imageSize,
+              transform,
+              viewportSize,
+              focusAnchor,
+            }}
+          >
+            {children}
+          </ImageCanvasContext.Provider>
+          <ZoomControls
+            zoom={zoom}
+            disabled={!transform || isPanning}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onReset={resetView}
+          />
+          <span className="canvas-caption">Alpine escape / Cover concept</span>
+        </div>
+        <div id="comments-sidebar" />
       </div>
       <footer className="review-footer">
         <span id="canvas-instructions">

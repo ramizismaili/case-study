@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -18,6 +19,7 @@ import type {
   CommentPinProps,
   CommentDropdownItemProps,
   ComposerSubmitComment,
+  ComposerProps,
   FloatingComposerProps,
   FloatingThreadProps,
 } from "@liveblocks/react-ui";
@@ -53,6 +55,7 @@ const mockCreateThread = jest.fn((options: CreateThreadOptions) => {
 });
 
 jest.mock("@liveblocks/react", () => ({
+  useUser: () => ({ user: { name: "Ada Lovelace" } }),
   useUpdateMyPresence: () => mockUpdateMyPresence,
   useRoom: () => ({ id: "test-room" }),
   useSelf: () => mockCreatorId,
@@ -96,6 +99,44 @@ jest.mock("@liveblocks/react-ui", () => {
   }
 
   return {
+    Composer: ({
+      onComposerSubmit,
+      onSubmitCapture,
+      disabled,
+    }: ComposerProps) => (
+      <form
+        aria-label="Reply"
+        onSubmitCapture={onSubmitCapture}
+        onSubmit={(event) => {
+          if (event.defaultPrevented) return;
+          const editor = event.currentTarget.elements.namedItem(
+            "reply"
+          ) as HTMLTextAreaElement;
+          onComposerSubmit?.(
+            {
+              body: {
+                version: 1,
+                content: [
+                  { type: "paragraph", children: [{ text: editor.value }] },
+                ],
+              },
+              attachments: [],
+            },
+            event
+          );
+          if (!event.defaultPrevented) {
+            mockCreateReply();
+            editor.value = "";
+          }
+          event.preventDefault();
+        }}
+      >
+        <textarea aria-label="Reply text" name="reply" disabled={disabled} />
+        <button type="submit" disabled={disabled}>
+          Send reply
+        </button>
+      </form>
+    ),
     Comment: {
       DropdownItem: ({ children, onSelect }: CommentDropdownItemProps) => (
         <button role="menuitem" onClick={() => onSelect?.(new Event("select"))}>
@@ -198,7 +239,6 @@ jest.mock("@liveblocks/react-ui", () => {
           showResolveAction,
           onCommentEdit,
           onCommentDelete,
-          onComposerSubmit,
           onSubmitCapture,
           open,
           onOpenChange,
@@ -224,37 +264,6 @@ jest.mock("@liveblocks/react-ui", () => {
                 style={style}
               >
                 Thread {thread.id}
-                {thread.comments.length > 0 && (
-                  <form
-                    aria-label="Reply"
-                    onSubmit={(event) => {
-                      if (event.defaultPrevented) return;
-                      const editor = event.currentTarget.elements.namedItem(
-                        "reply"
-                      ) as HTMLTextAreaElement;
-                      onComposerSubmit?.(
-                        {
-                          body: {
-                            version: 1,
-                            content: [
-                              {
-                                type: "paragraph",
-                                children: [{ text: editor.value }],
-                              },
-                            ],
-                          },
-                          attachments: [],
-                        },
-                        event
-                      );
-                      if (!event.defaultPrevented) mockCreateReply();
-                      event.preventDefault();
-                    }}
-                  >
-                    <textarea aria-label="Reply text" name="reply" />
-                    <button type="submit">Send reply</button>
-                  </form>
-                )}
                 {showResolveAction && (
                   <button onClick={() => onResolvedChange?.(!thread.resolved)}>
                     {thread.resolved ? "Reopen thread" : "Resolve thread"}
@@ -329,6 +338,7 @@ function canvas(transform: ViewportTransform | null = initialTransform) {
   return (
     <ImageCanvasContext.Provider
       value={{
+        focusAnchor: jest.fn(),
         viewportRef: { current: null },
         imageSize,
         transform,
@@ -942,6 +952,180 @@ describe("comments with canvas navigation", () => {
     fireEvent.pointerMove(target, { clientX: 480, clientY: 260 });
     fireEvent.pointerUp(target, { clientX: 480, clientY: 260 });
   }
+
+  it.each([0, 1, 3])(
+    "focuses a sidebar thread after %s zoom steps without persisting camera changes",
+    (steps) => {
+      const thread = makeThread("th_focus", {
+        x: 0.9,
+        y: 0.1,
+        coordinateSpace: "image",
+        zIndex: 1,
+      });
+      mockThreads = [thread];
+      const { imageTarget } = renderInteractiveCanvas();
+      for (let i = 0; i < steps; i++)
+        fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+      pan(imageTarget);
+      fireEvent.click(
+        screen.getByRole("button", { name: /No comments available/ })
+      );
+      expect(
+        screen.getByRole("button", { name: "Close comment thread" })
+      ).toHaveStyle({ transform: "translate3d(532px, 282px, 0)" });
+      expect(
+        screen.getByRole("button", { name: "Close comment thread" })
+      ).toHaveAttribute("data-focused", "true");
+      expect(
+        screen.getByRole("dialog", { name: "Comment thread" })
+      ).toHaveTextContent("th_focus");
+      expect(screen.getByLabelText("Zoom level")).toHaveTextContent(
+        `${100 + steps * 25}%`
+      );
+      expect(thread.metadata).toEqual({
+        x: 0.9,
+        y: 0.1,
+        coordinateSpace: "image",
+        zIndex: 1,
+      });
+      expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+      expect(mockCreateThread).not.toHaveBeenCalled();
+      expect(screen.queryByRole("form", { name: "New comment" })).toBeNull();
+    }
+  );
+
+  it("focuses a legacy viewport pin using a local anchor without rewriting its metadata", () => {
+    const thread = makeThread("th_legacy", { x: 1400, y: 150, zIndex: 1 });
+    mockThreads = [thread];
+    renderInteractiveCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: /No comments available/ })
+    );
+    expect(
+      screen.getByRole("button", { name: "Close comment thread" })
+    ).toHaveStyle({ transform: "translate3d(532px, 282px, 0)" });
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(
+      screen.getByRole("button", { name: "Close comment thread" })
+    ).toHaveStyle({ transform: "translate3d(532px, 282px, 0)" });
+    expect(thread.metadata).toEqual({ x: 1400, y: 150, zIndex: 1 });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("uses the resized canvas for focus and placement after sidebar expansion", async () => {
+    const user = userEvent.setup();
+    mockThreads = [
+      makeThread("th_narrow", {
+        x: 0.8,
+        y: 0.2,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { viewport } = renderInteractiveCanvas();
+    await user.click(
+      screen.getByRole("button", { name: "Collapse comments sidebar" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Expand comments sidebar" })
+    );
+    dimensions.resize(viewport, { width: 280, height: 564 });
+    const item = screen.getByRole("button", { name: /No comments available/ });
+    item.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      screen.getByRole("button", { name: "Close comment thread" })
+    ).toHaveStyle({ transform: "translate3d(140px, 282px, 0)" });
+    expect(screen.getByRole("dialog", { name: "Comment thread" })).toHaveStyle({
+      maxInlineSize: "256px",
+    });
+    fireEvent.wheel(item, { deltaY: 100, ctrlKey: true });
+    pan(item);
+    expect(screen.getByLabelText("Zoom level")).toHaveTextContent("100%");
+    expect(viewport).not.toHaveAttribute("data-panning");
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
+
+  it("keeps a new-comment draft intact while browsing threads and resumes it", async () => {
+    const user = userEvent.setup();
+    mockThreads = [
+      makeThread("th_other", {
+        x: 0.9,
+        y: 0.8,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { imageTarget } = renderInteractiveCanvas();
+    fireEvent.click(imageTarget, { clientX: 312, clientY: 342, detail: 1 });
+    const editor = screen.getByRole("textbox", { name: "Comment" });
+    await user.type(editor, "Keep this draft while reviewing");
+    await user.click(
+      screen.getByRole("button", { name: /No comments available/ })
+    );
+    expect(editor).toBeInTheDocument();
+    expect(editor).not.toBeVisible();
+    expect(
+      screen.getByRole("dialog", { name: "Comment thread" })
+    ).toHaveTextContent("th_other");
+    await user.click(
+      screen.getByRole("button", { name: "Resume new comment" })
+    );
+    expect(screen.getByRole("textbox", { name: "Comment" })).toBe(editor);
+    expect(editor).toHaveValue("Keep this draft while reviewing");
+    expect(editor).toBeVisible();
+    expect(screen.queryByRole("dialog", { name: "Comment thread" })).toBeNull();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
+
+  it("preserves each reply editor when switching threads or collapsing the sidebar", async () => {
+    const user = userEvent.setup();
+    mockThreads = [
+      makeThread("th_first", {
+        x: 0.2,
+        y: 0.3,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+      makeThread("th_second", {
+        x: 0.8,
+        y: 0.6,
+        coordinateSpace: "image",
+        zIndex: 2,
+      }),
+    ];
+    renderInteractiveCanvas();
+    const [first, second] = within(
+      screen.getByRole("complementary", { name: "Comments sidebar" })
+    ).getAllByRole("button", { name: /No comments available/ });
+    await user.click(first);
+    const firstEditor = screen.getByRole("textbox", { name: "Reply text" });
+    await user.type(firstEditor, "First reply draft");
+    await user.click(second);
+    expect(
+      screen.getByRole("dialog", { name: "Comment thread" })
+    ).toHaveTextContent("th_second");
+    const secondEditor = screen.getByRole("textbox", { name: "Reply text" });
+    await user.type(secondEditor, "Second reply draft");
+    await user.click(first);
+    expect(screen.getByRole("textbox", { name: "Reply text" })).toBe(
+      firstEditor
+    );
+    expect(firstEditor).toHaveValue("First reply draft");
+    await user.click(
+      screen.getByRole("button", { name: "Collapse comments sidebar" })
+    );
+    expect(firstEditor).toHaveValue("First reply draft");
+    await user.click(
+      screen.getByRole("button", { name: "Expand comments sidebar" })
+    );
+    await user.click(second);
+    expect(screen.getByRole("textbox", { name: "Reply text" })).toBe(
+      secondEditor
+    );
+    expect(secondEditor).toHaveValue("Second reply draft");
+    expect(mockCreateReply).not.toHaveBeenCalled();
+  });
 
   it.each(["existing", "draft"])(
     "keeps sharing over a %s pin and its nested avatar without changing pin interactions",

@@ -468,6 +468,11 @@ describe("room loading and recovery", () => {
     );
 
     expect(screen.getByText("Loading shared comments…")).toBeVisible();
+    expect(
+      within(
+        screen.getByRole("complementary", { name: "Comments sidebar" })
+      ).getByText("Loading comments…")
+    ).toBeVisible();
     expect(screen.getByText("Loading image…")).toBeVisible();
   });
 

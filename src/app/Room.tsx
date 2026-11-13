@@ -10,6 +10,7 @@ import { Loading } from "../components/Loading";
 import { CollaborationStatus } from "../components/CollaborationStatus";
 import { MultiplayerCursors } from "../components/MultiplayerCursors";
 import { OnlineCollaborators } from "../components/OnlineCollaborators";
+import { CommentsSidebarShell } from "../components/CommentsSidebar";
 
 export function Room({ isConfigured }: { isConfigured: boolean }) {
   const params = useSearchParams();
@@ -48,7 +49,18 @@ export function Room({ isConfigured }: { isConfigured: boolean }) {
             </div>
           }
         >
-          <ClientSideSuspense fallback={<Loading />}>
+          <ClientSideSuspense
+            fallback={
+              <>
+                <Loading />
+                <CommentsSidebarShell>
+                  <p role="status" className="sidebar-empty">
+                    Loading comments…
+                  </p>
+                </CommentsSidebarShell>
+              </>
+            }
+          >
             <CommentsCanvas />
           </ClientSideSuspense>
         </ErrorBoundary>

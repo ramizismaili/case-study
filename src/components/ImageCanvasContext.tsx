@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, useContext, type RefObject } from "react";
-import type { Size, ViewportTransform } from "../lib/coordinates";
+import type { ImagePoint, Size, ViewportTransform } from "../lib/coordinates";
 
 type ImageCanvasGeometry = {
   viewportRef: RefObject<HTMLDivElement>;
   imageSize: Size;
   viewportSize: Size;
   transform: ViewportTransform | null;
+  focusAnchor: (anchor: ImagePoint) => void;
 };
 
 export const ImageCanvasContext = createContext<ImageCanvasGeometry | null>(
