@@ -3,6 +3,8 @@ import type { ThreadData } from "@liveblocks/client";
 import { useDraggable } from "@dnd-kit/core";
 import { useMaxZIndex } from "../hooks";
 import type { Point } from "../lib/coordinates";
+import { useThreadPlacement } from "../hooks/useThreadPlacement";
+import { COMMENT_PIN_SIZE } from "../lib/thread-placement";
 
 type DraggableThreadProps = {
   thread: ThreadData;
@@ -22,14 +24,18 @@ export function DraggableThread({
   const maxZIndex = useMaxZIndex();
   const x = position.x + (transform?.x ?? 0);
   const y = position.y + (transform?.y ?? 0);
+  const placement = useThreadPlacement({ x, y });
 
   return (
     <FloatingThread
       thread={thread}
       open={open}
       onOpenChange={onOpenChange}
-      side="right"
-      style={{ pointerEvents: isDragging ? "none" : "auto" }}
+      {...placement}
+      style={{
+        ...placement.style,
+        pointerEvents: isDragging ? "none" : "auto",
+      }}
     >
       <CommentPin
         ref={setNodeRef}
@@ -42,6 +48,8 @@ export function DraggableThread({
           position: "absolute",
           top: 0,
           left: 0,
+          width: COMMENT_PIN_SIZE,
+          height: COMMENT_PIN_SIZE,
           transform: `translate3d(${x}px, ${y}px, 0)`,
           zIndex: open || isDragging ? maxZIndex + 1 : thread.metadata.zIndex,
           touchAction: "none",

@@ -5,6 +5,7 @@ import type { Size, ViewportTransform } from "../lib/coordinates";
 
 type ImageCanvasGeometry = {
   imageSize: Size;
+  viewportSize: Size;
   transform: ViewportTransform | null;
 };
 

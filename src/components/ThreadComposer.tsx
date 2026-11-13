@@ -1,6 +1,8 @@
 import { CommentPin, FloatingComposer } from "@liveblocks/react-ui";
 import { useSelf, useCreateThread } from "@liveblocks/react/suspense";
 import { useMaxZIndex } from "../hooks";
+import { useThreadPlacement } from "../hooks/useThreadPlacement";
+import { COMMENT_PIN_SIZE } from "../lib/thread-placement";
 import {
   imageToViewport,
   type ImagePoint,
@@ -27,6 +29,7 @@ export function ThreadComposer({
   const createThread = useCreateThread();
   const maxZIndex = useMaxZIndex();
   const position = imageToViewport(anchor, imageSize, transform);
+  const placement = useThreadPlacement(position);
   const metadata = {
     x: anchor.x,
     y: anchor.y,
@@ -36,6 +39,7 @@ export function ThreadComposer({
 
   return (
     <FloatingComposer
+      {...placement}
       open
       onOpenChange={(open) => {
         if (!open) onCancel();
@@ -60,6 +64,8 @@ export function ThreadComposer({
           position: "absolute",
           top: 0,
           left: 0,
+          width: COMMENT_PIN_SIZE,
+          height: COMMENT_PIN_SIZE,
           transform: `translate(${position.x}px, ${position.y}px)`,
           zIndex: maxZIndex + 1,
         }}

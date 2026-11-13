@@ -91,7 +91,9 @@ export function ImageCanvas({ children }: PropsWithChildren) {
               : { visibility: "hidden" }
           }
         />
-        <ImageCanvasContext.Provider value={{ imageSize, transform }}>
+        <ImageCanvasContext.Provider
+          value={{ imageSize, transform, viewportSize }}
+        >
           {children}
         </ImageCanvasContext.Provider>
         <ZoomControls

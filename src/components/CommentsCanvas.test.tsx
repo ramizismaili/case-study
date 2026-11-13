@@ -66,59 +66,94 @@ jest.mock("@liveblocks/react-ui", () => {
         return <button ref={ref} {...props} />;
       }
     ),
-    FloatingComposer: ({
-      children,
-      metadata,
-      onComposerSubmit,
-      onOpenChange,
-    }: FloatingComposerProps) => (
-      <>
-        {trigger(children, () => onOpenChange?.(false))}
-        <form
-          aria-label="New comment"
-          onSubmit={(event) => {
-            const editor = event.currentTarget.elements.namedItem("body");
-            if (!(editor instanceof HTMLTextAreaElement))
-              throw new Error("Missing editor");
-            const comment: ComposerSubmitComment = {
-              body: {
-                version: 1,
-                content: [
-                  { type: "paragraph", children: [{ text: editor.value }] },
-                ],
-              },
-              attachments: [],
-            };
-            onComposerSubmit?.(comment, event);
-            // Like Liveblocks, default creation runs unless the handler opts out.
-            if (!event.defaultPrevented && metadata) {
-              mockCreateThread({ ...comment, metadata });
-            }
-            event.preventDefault();
-          }}
-        >
-          <textarea aria-label="Comment" name="body" />
-          <button type="submit">Send comment</button>
-          <button type="button" onClick={() => onOpenChange?.(false)}>
-            Cancel
-          </button>
-        </form>
-      </>
+    FloatingComposer: forwardRef<HTMLFormElement, FloatingComposerProps>(
+      function MockFloatingComposer(
+        {
+          children,
+          metadata,
+          onComposerSubmit,
+          onOpenChange,
+          side,
+          sideOffset,
+          alignOffset,
+          style,
+        },
+        ref
+      ) {
+        return (
+          <>
+            {trigger(children, () => onOpenChange?.(false))}
+            <form
+              ref={ref}
+              aria-label="New comment"
+              data-side={side}
+              data-side-offset={sideOffset}
+              data-align-offset={alignOffset}
+              style={style}
+              onSubmit={(event) => {
+                const editor = event.currentTarget.elements.namedItem("body");
+                if (!(editor instanceof HTMLTextAreaElement))
+                  throw new Error("Missing editor");
+                const comment: ComposerSubmitComment = {
+                  body: {
+                    version: 1,
+                    content: [
+                      { type: "paragraph", children: [{ text: editor.value }] },
+                    ],
+                  },
+                  attachments: [],
+                };
+                onComposerSubmit?.(comment, event);
+                // Like Liveblocks, default creation runs unless the handler opts out.
+                if (!event.defaultPrevented && metadata) {
+                  mockCreateThread({ ...comment, metadata });
+                }
+                event.preventDefault();
+              }}
+            >
+              <textarea aria-label="Comment" name="body" />
+              <button type="submit">Send comment</button>
+              <button type="button" onClick={() => onOpenChange?.(false)}>
+                Cancel
+              </button>
+            </form>
+          </>
+        );
+      }
     ),
-    FloatingThread: ({
-      children,
-      thread,
-      open,
-      onOpenChange,
-    }: FloatingThreadProps) => (
-      <>
-        {trigger(children, () => onOpenChange?.(!open))}
-        {open && (
-          <div role="dialog" aria-label="Comment thread">
-            Thread {thread.id}
-          </div>
-        )}
-      </>
+    FloatingThread: forwardRef<HTMLDivElement, FloatingThreadProps>(
+      function MockFloatingThread(
+        {
+          children,
+          thread,
+          open,
+          onOpenChange,
+          side,
+          sideOffset,
+          alignOffset,
+          style,
+        },
+        ref
+      ) {
+        return (
+          <>
+            {trigger(children, () => onOpenChange?.(!open))}
+            {open && (
+              <div
+                ref={ref}
+                role="dialog"
+                aria-label="Comment thread"
+                data-side={side}
+                data-side-offset={sideOffset}
+                data-align-offset={alignOffset}
+                style={style}
+              >
+                Thread {thread.id}
+              </div>
+            )}
+          </>
+        );
+      }
     ),
   };
 });
@@ -142,7 +177,13 @@ const initialTransform = { origin: { x: 100, y: 80 }, scale: 0.5 };
 
 function canvas(transform: ViewportTransform | null = initialTransform) {
   return (
-    <ImageCanvasContext.Provider value={{ imageSize, transform }}>
+    <ImageCanvasContext.Provider
+      value={{
+        imageSize,
+        transform,
+        viewportSize: { width: 800, height: 600 },
+      }}
+    >
       <CommentsCanvas />
     </ImageCanvasContext.Provider>
   );
@@ -162,15 +203,18 @@ function renderCanvas() {
 }
 
 let restorePointers: () => void;
+let dimensions: ReturnType<typeof mockCanvasResize>;
 
 beforeEach(() => {
   mockThreads = [];
   restorePointers = mockCanvasPointerEvents();
+  dimensions = mockCanvasResize();
 });
 
 afterEach(() => {
   cleanup();
   restorePointers();
+  dimensions.restore();
   jest.restoreAllMocks();
 });
 
@@ -369,17 +413,6 @@ describe("image-anchored comments", () => {
 });
 
 describe("comments with canvas navigation", () => {
-  let dimensions: ReturnType<typeof mockCanvasResize>;
-
-  beforeEach(() => {
-    dimensions = mockCanvasResize();
-  });
-
-  afterEach(() => {
-    cleanup();
-    dimensions.restore();
-  });
-
   function renderInteractiveCanvas() {
     render(
       <ImageCanvas>
@@ -410,6 +443,185 @@ describe("comments with canvas navigation", () => {
     fireEvent.pointerMove(target, { clientX: 480, clientY: 260 });
     fireEvent.pointerUp(target, { clientX: 480, clientY: 260 });
   }
+
+  function measurePopover(
+    element: HTMLElement,
+    size: { width: number; height: number }
+  ) {
+    jest
+      .spyOn(element, "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(0, 0, size.width, size.height));
+    dimensions.resize(element, size);
+  }
+
+  it("flips an open thread through pan, reset, and zoom without moving its stored anchor", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.6,
+        y: 0.5,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { imageTarget } = renderInteractiveCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open comment thread" })
+    );
+    const thread = screen.getByRole("dialog", { name: "Comment thread" });
+    measurePopover(thread, { width: 350, height: 200 });
+    expect(thread).toHaveAttribute("data-side", "right");
+
+    pan(imageTarget);
+
+    expect(thread).toHaveAttribute("data-side", "left");
+    expect(
+      screen.getByRole("button", { name: "Close comment thread" })
+    ).toHaveStyle({ transform: "translate3d(712px, 242px, 0)" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
+
+    expect(thread).toHaveAttribute("data-side", "right");
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+
+    expect(thread).toHaveAttribute("data-side", "left");
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
+
+  it("recalculates thread alignment when the viewport shrinks and grows", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.6,
+        y: 0.5,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { viewport } = renderInteractiveCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open comment thread" })
+    );
+    const thread = screen.getByRole("dialog", { name: "Comment thread" });
+    measurePopover(thread, { width: 350, height: 200 });
+
+    dimensions.resize(viewport, { width: 800, height: 564 });
+
+    expect(thread).toHaveAttribute("data-side", "left");
+
+    dimensions.resize(viewport, { width: 1064, height: 564 });
+
+    expect(thread).toHaveAttribute("data-side", "right");
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("moves a growing thread upwards and makes oversized content scrollable", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.8,
+        y: 0.9,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    renderInteractiveCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open comment thread" })
+    );
+    const thread = screen.getByRole("dialog", { name: "Comment thread" });
+    measurePopover(thread, { width: 350, height: 50 });
+    expect(thread).toHaveAttribute("data-align-offset", "0");
+
+    measurePopover(thread, { width: 350, height: 300 });
+
+    expect(thread).toHaveAttribute("data-align-offset", "-230");
+
+    measurePopover(thread, { width: 350, height: 1000 });
+
+    expect(thread).toHaveAttribute("data-align-offset", "-470");
+    expect(thread).toHaveStyle({ maxBlockSize: "540px", overflow: "auto" });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("keeps the editor readable when neither side has enough space", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.5,
+        y: 0.5,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { viewport } = renderInteractiveCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open comment thread" })
+    );
+    const thread = screen.getByRole("dialog", { name: "Comment thread" });
+    measurePopover(thread, { width: 350, height: 200 });
+
+    dimensions.resize(viewport, { width: 500, height: 500 });
+
+    expect(thread).toHaveStyle({ inlineSize: "350px" });
+    expect(thread).toHaveAttribute("data-side-offset", "-112");
+
+    dimensions.resize(viewport, { width: 280, height: 320 });
+
+    expect(thread).toHaveStyle({
+      inlineSize: "256px",
+      maxInlineSize: "256px",
+      maxBlockSize: "296px",
+    });
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("opens a new-comment composer inwards and keeps its draft through geometry changes", async () => {
+    const user = userEvent.setup();
+    const { imageTarget, viewport } = renderInteractiveCanvas();
+    fireEvent.click(imageTarget, { clientX: 1012, clientY: 542, detail: 1 });
+    const composer = screen.getByRole("form", { name: "New comment" });
+    measurePopover(composer, { width: 350, height: 180 });
+    const editor = screen.getByRole("textbox", { name: "Comment" });
+    await user.type(editor, "Keep this draft");
+
+    expect(composer).toHaveAttribute("data-side", "left");
+    expect(composer).toHaveAttribute("data-align-offset", "-110");
+    expect(
+      screen.getByRole("button", { name: "Cancel new comment" })
+    ).toHaveStyle({ transform: "translate(982px, 482px)" });
+
+    dimensions.resize(viewport, { width: 280, height: 320 });
+
+    expect(composer).toHaveStyle({
+      inlineSize: "256px",
+      maxBlockSize: "296px",
+    });
+    expect(editor).toHaveValue("Keep this draft");
+    expect(mockCreateThread).not.toHaveBeenCalled();
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
+
+  it("hides an off-canvas draft and restores it intact when its anchor returns", async () => {
+    const user = userEvent.setup();
+    const { imageTarget } = renderInteractiveCanvas();
+    fireEvent.click(imageTarget, { clientX: 562, clientY: 342, detail: 1 });
+    const composer = screen.getByRole("form", { name: "New comment" });
+    const editor = screen.getByRole("textbox", { name: "Comment" });
+    await user.type(editor, "Draft stays attached");
+
+    fireEvent.pointerDown(imageTarget, { clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(imageTarget, { clientX: -700, clientY: 300 });
+    fireEvent.pointerUp(imageTarget, { clientX: -700, clientY: 300 });
+
+    expect(composer).not.toBeVisible();
+    expect(editor).toHaveValue("Draft stays attached");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
+
+    expect(composer).toBeVisible();
+    expect(editor).toHaveValue("Draft stays attached");
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
 
   it("keeps the pin on its image point through zoom, pan, and reset without metadata writes", () => {
     mockThreads = [
