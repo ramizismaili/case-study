@@ -77,6 +77,7 @@ export function ImageCanvas({ children }: PropsWithChildren) {
         </div>
         <div className="review-header-status">
           <span className="review-badge">Shared canvas</span>
+          <div id="online-collaborators" />
           <span id="collaboration-indicator" />
         </div>
       </header>
@@ -137,7 +138,7 @@ export function ImageCanvas({ children }: PropsWithChildren) {
           </div>
         )}
         <ImageCanvasContext.Provider
-          value={{ imageSize, transform, viewportSize }}
+          value={{ viewportRef, imageSize, transform, viewportSize }}
         >
           {children}
         </ImageCanvasContext.Provider>

@@ -8,6 +8,8 @@ import { ErrorBoundary } from "react-error-boundary";
 import { CommentsCanvas } from "../components/CommentsCanvas";
 import { Loading } from "../components/Loading";
 import { CollaborationStatus } from "../components/CollaborationStatus";
+import { MultiplayerCursors } from "../components/MultiplayerCursors";
+import { OnlineCollaborators } from "../components/OnlineCollaborators";
 
 export function Room({ isConfigured }: { isConfigured: boolean }) {
   const params = useSearchParams();
@@ -30,8 +32,10 @@ export function Room({ isConfigured }: { isConfigured: boolean }) {
   }
 
   return (
-    <RoomProvider key={roomId} id={roomId}>
+    <RoomProvider key={roomId} id={roomId} initialPresence={{ cursor: null }}>
       <CollaborationStatus>
+        <MultiplayerCursors />
+        <OnlineCollaborators />
         <ErrorBoundary
           resetKeys={[roomId]}
           fallback={

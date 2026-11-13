@@ -106,6 +106,7 @@ export function ThreadComposer({
         }}
       >
         <CommentPin
+          data-cursor-surface
           userId={creatorId}
           corner="top-left"
           aria-label="Cancel new comment"

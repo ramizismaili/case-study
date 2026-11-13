@@ -19,6 +19,7 @@ Built for a Full Stack Developer hiring case study from the official Liveblocks 
 - Replies, editing, deletion, resolution, and thread subscriptions through Liveblocks UI.
 - Zoom controls, reset view, and responsive popover sizing.
 - Action notifications, connection feedback, image retry, and failed-comment text recovery.
+- Live image-relative collaborator cursors and a compact online avatar group.
 
 ## Tech stack
 
@@ -70,6 +71,8 @@ npm start
 
 To check collaboration, open the same URL in two tabs and add or move a comment. For a separate test room, use the same `?exampleId=your-test-name` query in both tabs. Reload to check persistence. Pan and zoom are independent in each tab.
 
+Move the pointer over the image or its comment pins to share its position. Other reviewers see a named, colored cursor at the corresponding image point in their own view. Moving outside the image or onto popovers or navigation controls, leaving the canvas, or hiding the tab clears the shared cursor. The header shows online connections, including your own once; separate tabs may use the same demo identity and remain separate collaborators.
+
 ## Architecture and technical decisions
 
 `ImageCanvas` owns image loading, viewport measurement, and local view state. `Room` owns the Liveblocks room and loading/error boundaries. `CommentsCanvas` connects persisted threads to canvas interactions; `ThreadComposer` and `DraggableThread` retain Liveblocks' editor, thread UI, and mutation APIs.
@@ -109,6 +112,8 @@ Liveblocks owns persisted comments and optimistic mutations; React owns local na
 
 `CollaborationStatus` scopes SDK errors to the active room, preserves failed text, and provides action notifications through React context. Portals place notifications above the canvas and the connection indicator in the header. Success notices dismiss automatically after saving, pause while hovered or focused, and can be dismissed manually. Error notices persist. Author identity uses the non-suspending hook so opening the first draft does not replace existing comments with a loading screen.
 
+`MultiplayerCursors` uses ephemeral Liveblocks Presence (`cursor: { x, y } | null`), with the same normalized image coordinates as comment anchors. `useCursorPresence` coalesces pointer movement to at most 20 updates per second, skips identical positions, and clears pending work on leave, cancellation, blur, disconnect, and unmount. Local view changes alone do not publish presence. Each remote cursor subscribes to its own connection; the avatar group selects identity fields only. Missing names use “Guest”, missing or failed avatars use initials, and the header caps the visible group at three avatars plus an overflow count. Cursor overlays ignore pointer events and hide image points outside the local viewport.
+
 ## Testing and verification
 
 ```sh
@@ -127,8 +132,11 @@ npm run build
 | Image canvas | `ImageCanvas.test.tsx`                          | Controls, reset, cancellation, loading/retry, cached images, resize                                               |
 | Comments     | `CommentsCanvas.test.tsx`                       | Creation, metadata, drag/click separation, offline/empty guards, placement, notifications, first-draft regression |
 | Recovery     | `Room.test.tsx`, `comment-body.test.ts`         | Connection errors, notification timing, failed text, rich-text validation                                         |
+| Presence     | `CollaborationPresence.test.tsx`               | Remote-only cursors, pan/zoom/resize mapping, throttling and cleanup, malformed presence, avatar counts and fallbacks |
 
 Tests mock Liveblocks network hooks and editor/popover components where needed; application coordinate logic and dnd-kit interactions remain real. DOM measurements and pointer capture are controlled for deterministic jsdom tests. These tests do not replace a real-browser collaboration check or prove behavior against a failing live service. Browser checks during implementation covered loaded/cached images, zoom/reset, opening threads and drafts, and the notification/header UI; two-client persistence and synchronization were checked during the anchored-comments milestone.
+
+Manual checks for multiplayer presence: use two tabs in the same configured room, choose different viewport sizes and zoom/pan settings, and verify that a remote cursor tracks the same image detail. Check pointer leave, tab switching, reconnect, and closing one tab; confirm the avatar count follows connections. At narrow widths, check the avatar overflow and header layout. With cursors visible, create a comment, drag a pin, and open an edge thread to verify that overlays do not intercept interactions. These real-service checks remain separate from the mocked Jest coverage.
 
 ## Known limitations
 

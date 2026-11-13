@@ -25,6 +25,10 @@ import { CollaborationStatus } from "./CollaborationStatus";
 import { CommentsCanvas } from "./CommentsCanvas";
 import { ImageCanvas } from "./ImageCanvas";
 import { ImageCanvasContext } from "./ImageCanvasContext";
+import {
+  useCursorPresence,
+  CURSOR_UPDATE_INTERVAL,
+} from "../hooks/useCursorPresence";
 import type { Point, ViewportTransform } from "../lib/coordinates";
 import {
   loadCanvasImage,
@@ -41,6 +45,7 @@ const mockCreateReply = jest.fn();
 const mockSubscribe = jest.fn();
 const mockUnsubscribe = jest.fn();
 const mockEditThreadMetadata = jest.fn();
+const mockUpdateMyPresence = jest.fn();
 const mockCreateThread = jest.fn((options: CreateThreadOptions) => {
   const thread = makeThread("th_new", options.metadata);
   mockThreads = [...mockThreads, thread];
@@ -48,6 +53,7 @@ const mockCreateThread = jest.fn((options: CreateThreadOptions) => {
 });
 
 jest.mock("@liveblocks/react", () => ({
+  useUpdateMyPresence: () => mockUpdateMyPresence,
   useRoom: () => ({ id: "test-room" }),
   useSelf: () => mockCreatorId,
   useStatus: () => mockStatus,
@@ -323,6 +329,7 @@ function canvas(transform: ViewportTransform | null = initialTransform) {
   return (
     <ImageCanvasContext.Provider
       value={{
+        viewportRef: { current: null },
         imageSize,
         transform,
         viewportSize: { width: 800, height: 600 },
@@ -364,6 +371,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  jest.useRealTimers();
   restorePointers();
   dimensions.restore();
   jest.restoreAllMocks();
@@ -893,10 +901,16 @@ describe("image-anchored comments", () => {
   });
 });
 
+function CursorPresence() {
+  useCursorPresence();
+  return null;
+}
+
 describe("comments with canvas navigation", () => {
-  function renderInteractiveCanvas() {
+  function renderInteractiveCanvas(shareCursor = false) {
     render(
       <ImageCanvas>
+        {shareCursor && <CursorPresence />}
         <CollaborationStatus>
           <Suspense fallback={<div>Loading shared comments…</div>}>
             <CommentsCanvas />
@@ -928,6 +942,73 @@ describe("comments with canvas navigation", () => {
     fireEvent.pointerMove(target, { clientX: 480, clientY: 260 });
     fireEvent.pointerUp(target, { clientX: 480, clientY: 260 });
   }
+
+  it.each(["existing", "draft"])(
+    "keeps sharing over a %s pin and its nested avatar without changing pin interactions",
+    (kind) => {
+      jest.useFakeTimers();
+      if (kind === "existing") {
+        mockThreads = [
+          makeThread("th_existing", {
+            x: 0.25,
+            y: 0.5,
+            coordinateSpace: "image",
+            zIndex: 1,
+          }),
+        ];
+      }
+      const { imageTarget, viewport, image } = renderInteractiveCanvas(true);
+      jest
+        .spyOn(viewport, "getBoundingClientRect")
+        .mockReturnValue(new DOMRect(30, 60, 1064, 564));
+      if (kind === "draft") {
+        fireEvent.click(imageTarget, { clientX: 312, clientY: 342, detail: 1 });
+      }
+      const pin = screen.getByRole("button", {
+        name:
+          kind === "existing" ? "Open comment thread" : "Cancel new comment",
+      });
+      // Liveblocks renders nested avatar content inside the pin button.
+      const avatar = document.createElement("img");
+      pin.appendChild(avatar);
+      fireEvent.pointerMove(imageTarget, { clientX: 562, clientY: 342 });
+      act(() => jest.advanceTimersByTime(CURSOR_UPDATE_INTERVAL));
+      expect(mockUpdateMyPresence).toHaveBeenLastCalledWith({
+        cursor: { x: 0.5, y: 0.5 },
+      });
+
+      for (const target of [pin, avatar]) {
+        fireEvent.pointerMove(target, { clientX: 312, clientY: 342 });
+        act(() => jest.advanceTimersByTime(CURSOR_UPDATE_INTERVAL));
+        expect(mockUpdateMyPresence).toHaveBeenLastCalledWith({
+          cursor: { x: 0.25, y: 0.5 },
+        });
+      }
+      expect(mockUpdateMyPresence).not.toHaveBeenCalledWith({ cursor: null });
+      fireEvent.pointerDown(avatar, { clientX: 312, clientY: 342 });
+      fireEvent.pointerUp(avatar, { clientX: 312, clientY: 342 });
+      fireEvent.click(avatar);
+      if (kind === "existing") {
+        expect(
+          screen.getByRole("dialog", { name: "Comment thread" })
+        ).toBeVisible();
+        // The open thread's contents still do not share image coordinates.
+        fireEvent.pointerMove(
+          screen.getByRole("dialog", { name: "Comment thread" }),
+          { clientX: 350, clientY: 342 }
+        );
+        expect(mockUpdateMyPresence).toHaveBeenLastCalledWith({ cursor: null });
+      } else {
+        expect(
+          screen.queryByRole("form", { name: "New comment" })
+        ).not.toBeInTheDocument();
+      }
+      expect(viewport).not.toHaveAttribute("data-panning");
+      expect(image).toHaveStyle({ transform: "translate(32px, 32px)" });
+      expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+      expect(mockCreateThread).not.toHaveBeenCalled();
+    }
+  );
 
   it("keeps panning and zooming usable while comments are disconnected", () => {
     mockStatus = "disconnected";

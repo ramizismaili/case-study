@@ -24,12 +24,18 @@ let mockErrorListener: (error: LiveblocksError) => void;
 let mockThreadsFailure: Error | Promise<never> | null = null;
 let mockExampleId = "";
 const mockReconnect = jest.fn();
+const mockUpdateMyPresence = jest.fn();
+const mockInitialPresence = jest.fn();
 const roomId = "test-room";
 
 jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams({ exampleId: mockExampleId }),
 }));
 jest.mock("@liveblocks/react", () => ({
+  useUpdateMyPresence: () => mockUpdateMyPresence,
+  useOthersConnectionIds: () => [],
+  useOthersMapped: () => [],
+  useSelf: () => null,
   useRoom: () => ({ id: "test-room", reconnect: mockReconnect }),
   useStatus: () => mockStatus,
   useSyncStatus: () => mockSyncStatus,
@@ -44,7 +50,13 @@ jest.mock("@liveblocks/react", () => ({
   ),
 }));
 jest.mock("@liveblocks/react/suspense", () => ({
-  RoomProvider: ({ children }: PropsWithChildren) => children,
+  RoomProvider: ({
+    children,
+    initialPresence,
+  }: PropsWithChildren<{ initialPresence: unknown }>) => {
+    mockInitialPresence(initialPresence);
+    return children;
+  },
   useStatus: () => mockStatus,
   useThreads: () => {
     if (mockThreadsFailure) throw mockThreadsFailure;
@@ -401,6 +413,15 @@ describe("action notifications", () => {
 });
 
 describe("room loading and recovery", () => {
+  it("joins with an explicitly hidden cursor", () => {
+    render(
+      <ImageCanvas>
+        <Room isConfigured />
+      </ImageCanvas>
+    );
+    expect(mockInitialPresence).toHaveBeenCalledWith({ cursor: null });
+  });
+
   it("clears previous-room feedback when switching rooms", () => {
     const { rerender } = render(
       <ImageCanvas>

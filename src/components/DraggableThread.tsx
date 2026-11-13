@@ -111,6 +111,7 @@ export function DraggableThread({
       }}
     >
       <CommentPin
+        data-cursor-surface
         ref={setNodeRef}
         userId={thread.comments[0]?.userId}
         corner="top-left"
