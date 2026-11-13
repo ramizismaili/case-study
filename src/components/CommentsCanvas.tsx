@@ -1,4 +1,8 @@
-import { useThreads, useEditThreadMetadata } from "@liveblocks/react/suspense";
+import {
+  useThreads,
+  useEditThreadMetadata,
+  useStatus,
+} from "@liveblocks/react/suspense";
 import {
   DndContext,
   type DragEndEvent,
@@ -25,12 +29,14 @@ import {
 
 export function CommentsCanvas() {
   const { threads } = useThreads();
+  const canEdit = useStatus() === "connected";
   const editThreadMetadata = useEditThreadMetadata();
   const maxZIndex = useMaxZIndex();
   const { imageSize, transform } = useImageCanvas();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [draftAnchor, setDraftAnchor] = useState<ImagePoint | null>(null);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const [interactionError, setInteractionError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
@@ -40,7 +46,7 @@ export function CommentsCanvas() {
   const handleDragEnd = useCallback(
     ({ active, delta }: DragEndEvent) => {
       const thread = threads.find((thread) => thread.id === active.id);
-      if (!thread || !transform) return;
+      if (!thread || !transform || !canEdit) return;
 
       const anchor = getDraggedImageAnchor(
         getThreadPosition(thread.metadata, imageSize, transform),
@@ -48,20 +54,27 @@ export function CommentsCanvas() {
         imageSize,
         transform
       );
-      editThreadMetadata({
-        threadId: thread.id,
-        metadata: {
-          ...anchor,
-          coordinateSpace: "image",
-          zIndex: maxZIndex + 1,
-        },
-      });
+      try {
+        editThreadMetadata({
+          threadId: thread.id,
+          metadata: {
+            ...anchor,
+            coordinateSpace: "image",
+            zIndex: maxZIndex + 1,
+          },
+        });
+        setInteractionError(null);
+      } catch {
+        setInteractionError(
+          "The comment could not be moved. Please try again."
+        );
+      }
     },
-    [editThreadMetadata, maxZIndex, threads, imageSize, transform]
+    [editThreadMetadata, maxZIndex, threads, imageSize, transform, canEdit]
   );
 
   function handleImageClick(event: MouseEvent<HTMLButtonElement>) {
-    if (!canvasRef.current || !transform) return;
+    if (!canvasRef.current || !transform || !canEdit) return;
     // Keyboard activation places a comment at the center of the image.
     const anchor =
       event.detail === 0
@@ -87,6 +100,12 @@ export function CommentsCanvas() {
       ref={canvasRef}
       className="comments-canvas"
       data-canvas-surface
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.defaultPrevented) {
+          setDraftAnchor(null);
+          setOpenThreadId(null);
+        }
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           setDraftAnchor(null);
@@ -94,11 +113,25 @@ export function CommentsCanvas() {
         }
       }}
     >
+      {interactionError && (
+        <div className="canvas-notice" role="alert">
+          {interactionError}
+          <button type="button" onClick={() => setInteractionError(null)}>
+            Dismiss error
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className="image-comment-target"
         data-canvas-surface
         aria-label="Add a comment on the image"
+        aria-disabled={!canEdit}
+        title={
+          canEdit
+            ? "Click to comment; drag to pan"
+            : "Reconnect to add comments; drag to pan"
+        }
         onClick={handleImageClick}
         style={{
           left: transform.origin.x,

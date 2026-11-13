@@ -14,16 +14,34 @@ export function ImageCanvas({ children }: PropsWithChildren) {
     height: 0,
   });
   const [imageSize, setImageSize] = useState<Size>({ width: 0, height: 0 });
+  const [imageStatus, setImageStatus] = useState<
+    "loading" | "loaded" | "error"
+  >("loading");
+  const [imageAttempt, setImageAttempt] = useState(0);
+
+  function imageFailed() {
+    setImageStatus("error");
+    setImageSize({ width: 0, height: 0 });
+  }
+
+  function imageLoaded(image: HTMLImageElement) {
+    if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+      imageFailed();
+      return;
+    }
+    setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+    setImageStatus("loaded");
+  }
+
+  useEffect(() => {
+    // Handle both successful and failed loads that finished before hydration.
+    const image = imageRef.current;
+    if (image?.complete) imageLoaded(image);
+  }, [imageAttempt]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-
-    // A cached image can finish loading before React hydrates the server HTML.
-    const image = imageRef.current;
-    if (image?.complete && image.naturalWidth > 0) {
-      setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
-    }
 
     const observer = new ResizeObserver(([entry]) => {
       setViewportSize({
@@ -57,30 +75,36 @@ export function ImageCanvas({ children }: PropsWithChildren) {
             <p>Alpine escape · Design review</p>
           </div>
         </div>
-        <span className="review-badge">Shared canvas</span>
+        <div className="review-header-status">
+          <span className="review-badge">Shared canvas</span>
+          <span id="collaboration-indicator" />
+        </div>
       </header>
       <div
         ref={viewportRef}
         className="image-viewport"
         role="region"
         aria-label="Image review canvas"
+        aria-describedby="canvas-instructions"
+        aria-busy={imageStatus === "loading"}
         data-canvas-surface
         data-panning={isPanning || undefined}
         {...viewportHandlers}
       >
         <img
+          key={imageAttempt}
           ref={imageRef}
           className="canvas-image"
-          src="/review-board.svg"
+          src={
+            imageAttempt === 0
+              ? "/review-board.svg"
+              : `/review-board.svg?retry=${imageAttempt}`
+          }
           alt="Alpine escape travel design with an illustrated mountain landscape"
           draggable={false}
           data-canvas-surface
-          onLoad={(event) => {
-            setImageSize({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            });
-          }}
+          onLoad={(event) => imageLoaded(event.currentTarget)}
+          onError={imageFailed}
           style={
             transform
               ? {
@@ -91,6 +115,27 @@ export function ImageCanvas({ children }: PropsWithChildren) {
               : { visibility: "hidden" }
           }
         />
+        {imageStatus === "loading" && (
+          <div className="image-notice" role="status">
+            Loading image…
+          </div>
+        )}
+        {imageStatus === "error" && (
+          <div className="image-notice" role="alert">
+            <strong>The image could not be loaded</strong>
+            <span>Check your connection and try again.</span>
+            <button
+              type="button"
+              onClick={() => {
+                setImageStatus("loading");
+                setImageAttempt((attempt) => attempt + 1);
+                resetView();
+              }}
+            >
+              Retry image
+            </button>
+          </div>
+        )}
         <ImageCanvasContext.Provider
           value={{ imageSize, transform, viewportSize }}
         >
@@ -106,7 +151,9 @@ export function ImageCanvas({ children }: PropsWithChildren) {
         <span className="canvas-caption">Alpine escape / Cover concept</span>
       </div>
       <footer className="review-footer">
-        <span>One image. A shared conversation.</span>
+        <span id="canvas-instructions">
+          Click to comment · Drag to pan · Use + and − to zoom
+        </span>
         <span>Powered by Liveblocks</span>
       </footer>
     </main>

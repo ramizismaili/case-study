@@ -7,15 +7,21 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps, MouseEvent as ReactMouseEvent } from "react";
+import {
+  Suspense,
+  type ComponentProps,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import type { ThreadData } from "@liveblocks/client";
 import type { useCreateThread } from "@liveblocks/react/suspense";
 import type {
   CommentPinProps,
+  CommentDropdownItemProps,
   ComposerSubmitComment,
   FloatingComposerProps,
   FloatingThreadProps,
 } from "@liveblocks/react-ui";
+import { CollaborationStatus } from "./CollaborationStatus";
 import { CommentsCanvas } from "./CommentsCanvas";
 import { ImageCanvas } from "./ImageCanvas";
 import { ImageCanvasContext } from "./ImageCanvasContext";
@@ -28,6 +34,12 @@ import {
 
 type CreateThreadOptions = Parameters<ReturnType<typeof useCreateThread>>[0];
 let mockThreads: ThreadData[] = [];
+let mockStatus = "connected";
+let mockCreatorId: string | null = "user-0";
+let mockSubscriptionStatus = "not-subscribed";
+const mockCreateReply = jest.fn();
+const mockSubscribe = jest.fn();
+const mockUnsubscribe = jest.fn();
 const mockEditThreadMetadata = jest.fn();
 const mockCreateThread = jest.fn((options: CreateThreadOptions) => {
   const thread = makeThread("th_new", options.metadata);
@@ -35,11 +47,28 @@ const mockCreateThread = jest.fn((options: CreateThreadOptions) => {
   return thread;
 });
 
+jest.mock("@liveblocks/react", () => ({
+  useRoom: () => ({ id: "test-room" }),
+  useSelf: () => mockCreatorId,
+  useStatus: () => mockStatus,
+  useSyncStatus: () => "synchronized",
+  useErrorListener: () => {},
+}));
+
 jest.mock("@liveblocks/react/suspense", () => ({
+  useThreadSubscription: () => ({
+    status: mockSubscriptionStatus,
+    subscribe: mockSubscribe,
+    unsubscribe: mockUnsubscribe,
+  }),
   useThreads: () => ({ threads: mockThreads }),
   useEditThreadMetadata: () => mockEditThreadMetadata,
   useCreateThread: () => mockCreateThread,
-  useSelf: () => "user-0",
+  useSelf: () => {
+    if (mockCreatorId === null) throw new Promise(() => {});
+    return mockCreatorId;
+  },
+  useStatus: () => mockStatus,
 }));
 
 // Isolate Liveblocks' network-backed editor/popovers. Keep our canvas, composer,
@@ -61,6 +90,13 @@ jest.mock("@liveblocks/react-ui", () => {
   }
 
   return {
+    Comment: {
+      DropdownItem: ({ children, onSelect }: CommentDropdownItemProps) => (
+        <button role="menuitem" onClick={() => onSelect?.(new Event("select"))}>
+          {children}
+        </button>
+      ),
+    },
     CommentPin: forwardRef<HTMLButtonElement, CommentPinProps>(
       function MockCommentPin({ corner, userId, ...props }, ref) {
         return <button ref={ref} {...props} />;
@@ -77,6 +113,10 @@ jest.mock("@liveblocks/react-ui", () => {
           sideOffset,
           alignOffset,
           style,
+          disabled,
+          defaultValue,
+          onSubmitCapture,
+          onInputCapture,
         },
         ref
       ) {
@@ -90,7 +130,10 @@ jest.mock("@liveblocks/react-ui", () => {
               data-side-offset={sideOffset}
               data-align-offset={alignOffset}
               style={style}
+              onSubmitCapture={onSubmitCapture}
+              onInputCapture={onInputCapture}
               onSubmit={(event) => {
+                if (event.defaultPrevented) return;
                 const editor = event.currentTarget.elements.namedItem("body");
                 if (!(editor instanceof HTMLTextAreaElement))
                   throw new Error("Missing editor");
@@ -109,10 +152,28 @@ jest.mock("@liveblocks/react-ui", () => {
                   mockCreateThread({ ...comment, metadata });
                 }
                 event.preventDefault();
+                // The SDK clears its editor after the callback, including when
+                // the callback prevents default thread creation.
+                editor.value = "";
               }}
             >
-              <textarea aria-label="Comment" name="body" />
-              <button type="submit">Send comment</button>
+              <textarea
+                aria-label="Comment"
+                name="body"
+                disabled={disabled}
+                defaultValue={defaultValue?.content
+                  .map((paragraph) =>
+                    paragraph.children
+                      .map((child) =>
+                        "text" in child ? (child.text ?? "") : ""
+                      )
+                      .join("")
+                  )
+                  .join("\n")}
+              />
+              <button type="submit" disabled={disabled}>
+                Send comment
+              </button>
               <button type="button" onClick={() => onOpenChange?.(false)}>
                 Cancel
               </button>
@@ -126,6 +187,13 @@ jest.mock("@liveblocks/react-ui", () => {
         {
           children,
           thread,
+          onResolvedChange,
+          commentDropdownItems,
+          showResolveAction,
+          onCommentEdit,
+          onCommentDelete,
+          onComposerSubmit,
+          onSubmitCapture,
           open,
           onOpenChange,
           side,
@@ -142,6 +210,7 @@ jest.mock("@liveblocks/react-ui", () => {
               <div
                 ref={ref}
                 role="dialog"
+                onSubmitCapture={onSubmitCapture}
                 aria-label="Comment thread"
                 data-side={side}
                 data-side-offset={sideOffset}
@@ -149,6 +218,69 @@ jest.mock("@liveblocks/react-ui", () => {
                 style={style}
               >
                 Thread {thread.id}
+                {thread.comments.length > 0 && (
+                  <form
+                    aria-label="Reply"
+                    onSubmit={(event) => {
+                      if (event.defaultPrevented) return;
+                      const editor = event.currentTarget.elements.namedItem(
+                        "reply"
+                      ) as HTMLTextAreaElement;
+                      onComposerSubmit?.(
+                        {
+                          body: {
+                            version: 1,
+                            content: [
+                              {
+                                type: "paragraph",
+                                children: [{ text: editor.value }],
+                              },
+                            ],
+                          },
+                          attachments: [],
+                        },
+                        event
+                      );
+                      if (!event.defaultPrevented) mockCreateReply();
+                      event.preventDefault();
+                    }}
+                  >
+                    <textarea aria-label="Reply text" name="reply" />
+                    <button type="submit">Send reply</button>
+                  </form>
+                )}
+                {showResolveAction && (
+                  <button onClick={() => onResolvedChange?.(!thread.resolved)}>
+                    {thread.resolved ? "Reopen thread" : "Resolve thread"}
+                  </button>
+                )}
+                {thread.comments
+                  .filter((comment) => comment.body)
+                  .map((comment) => (
+                    <div key={comment.id}>
+                      {typeof commentDropdownItems === "function"
+                        ? commentDropdownItems({
+                            comment,
+                            children: (
+                              <>
+                                <button
+                                  role="menuitem"
+                                  onClick={() => onCommentEdit?.(comment)}
+                                >
+                                  Edit comment
+                                </button>
+                                <button
+                                  role="menuitem"
+                                  onClick={() => onCommentDelete?.(comment)}
+                                >
+                                  Delete comment
+                                </button>
+                              </>
+                            ),
+                          })
+                        : commentDropdownItems}
+                    </div>
+                  ))}
               </div>
             )}
           </>
@@ -184,7 +316,11 @@ function canvas(transform: ViewportTransform | null = initialTransform) {
         viewportSize: { width: 800, height: 600 },
       }}
     >
-      <CommentsCanvas />
+      <CollaborationStatus>
+        <Suspense fallback={<div>Loading shared comments…</div>}>
+          <CommentsCanvas />
+        </Suspense>
+      </CollaborationStatus>
     </ImageCanvasContext.Provider>
   );
 }
@@ -207,6 +343,9 @@ let dimensions: ReturnType<typeof mockCanvasResize>;
 
 beforeEach(() => {
   mockThreads = [];
+  mockStatus = "connected";
+  mockCreatorId = "user-0";
+  mockSubscriptionStatus = "not-subscribed";
   restorePointers = mockCanvasPointerEvents();
   dimensions = mockCanvasResize();
 });
@@ -239,7 +378,310 @@ function dragCommentPin(pin: HTMLElement, start: Point, end: Point) {
   }
 }
 
+describe("thread action feedback", () => {
+  beforeEach(() => {
+    const thread = makeThread("th_existing", {
+      x: 0.3,
+      y: 0.4,
+      coordinateSpace: "image",
+      zIndex: 1,
+    });
+    thread.comments = [
+      {
+        type: "comment",
+        id: "cm_existing",
+        threadId: thread.id,
+        roomId: thread.roomId,
+        userId: "user-0",
+        createdAt: thread.createdAt,
+        reactions: [],
+        attachments: [],
+        metadata: {},
+        body: {
+          version: 1,
+          content: [
+            { type: "paragraph", children: [{ text: "Existing comment" }] },
+          ],
+        },
+      },
+    ];
+    mockThreads = [thread];
+  });
+
+  function openThread() {
+    const view = renderCanvas();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open comment thread" })
+    );
+    return view;
+  }
+
+  it.each([
+    [false, "Resolve thread", "Thread resolved"],
+    [true, "Reopen thread", "Thread reopened"],
+  ] as const)(
+    "announces changing a thread with resolved=%s",
+    (resolved, control, message) => {
+      mockThreads[0].resolved = resolved;
+      openThread();
+
+      fireEvent.click(screen.getByRole("button", { name: control }));
+
+      expect(screen.getByText(message)).toBeVisible();
+    }
+  );
+
+  it.each([
+    ["not-subscribed", "Subscribe to thread", "Subscribed to thread"],
+    ["subscribed", "Unsubscribe from thread", "Unsubscribed from thread"],
+  ] as const)(
+    "announces a subscription change from %s",
+    (status, control, message) => {
+      mockSubscriptionStatus = status;
+      openThread();
+
+      fireEvent.click(screen.getByRole("menuitem", { name: control }));
+
+      expect(
+        status === "subscribed" ? mockUnsubscribe : mockSubscribe
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        status === "subscribed" ? mockSubscribe : mockUnsubscribe
+      ).not.toHaveBeenCalled();
+      expect(screen.getByText(message)).toBeVisible();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit comment" })
+      ).toBeVisible();
+      expect(
+        screen.getByRole("menuitem", { name: "Delete comment" })
+      ).toBeVisible();
+    }
+  );
+
+  it.each([
+    ["Edit comment", "Comment updated"],
+    ["Delete comment", "Comment deleted"],
+  ])("announces %s", (control, message) => {
+    openThread();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: control }));
+
+    expect(screen.getByText(message)).toBeVisible();
+  });
+
+  it.each([
+    ["A reply", true],
+    ["   ", false],
+  ])("only announces nonempty reply %j", (text, submitted) => {
+    openThread();
+    fireEvent.change(screen.getByRole("textbox", { name: "Reply text" }), {
+      target: { value: text },
+    });
+
+    fireEvent.submit(screen.getByRole("form", { name: "Reply" }));
+
+    expect(mockCreateReply).toHaveBeenCalledTimes(submitted ? 1 : 0);
+    expect(Boolean(screen.queryByText("Reply added"))).toBe(submitted);
+  });
+
+  it("does not announce or submit replies while offline", () => {
+    mockStatus = "disconnected";
+    openThread();
+    fireEvent.change(screen.getByRole("textbox", { name: "Reply text" }), {
+      target: { value: "Not sent" },
+    });
+
+    fireEvent.submit(screen.getByRole("form", { name: "Reply" }));
+
+    expect(mockCreateReply).not.toHaveBeenCalled();
+    expect(screen.queryByText("Reply added")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Subscribe to thread" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Resolve thread" })
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("image-anchored comments", () => {
+  it("opens the first draft without reloading existing comments while author identity is pending", () => {
+    mockCreatorId = null;
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.2,
+        y: 0.3,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    const { imageTarget } = renderCanvas();
+
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+
+    expect(
+      screen.queryByText("Loading shared comments…")
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "New comment" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Open comment thread" })
+    ).toBeVisible();
+  });
+
+  it.each(["", "   ", "\n\t"])(
+    "rejects an empty comment %j without writing to Liveblocks",
+    (text) => {
+      const { imageTarget } = renderCanvas();
+      fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+      fireEvent.change(screen.getByRole("textbox", { name: "Comment" }), {
+        target: { value: text },
+      });
+
+      fireEvent.submit(screen.getByRole("form", { name: "New comment" }));
+
+      expect(mockCreateThread).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Write a comment before sending"
+      );
+      expect(screen.getByRole("form", { name: "New comment" })).toBeVisible();
+    }
+  );
+
+  it("restores a draft after a local submission error and allows a successful retry", async () => {
+    const user = userEvent.setup();
+    mockCreateThread.mockImplementationOnce(() => {
+      throw new Error("Local SDK failure");
+    });
+    const { imageTarget } = renderCanvas();
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+    await user.type(
+      screen.getByRole("textbox", { name: "Comment" }),
+      "Keep this comment"
+    );
+
+    await user.click(screen.getByRole("button", { name: "Send comment" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Your draft is ready to try again"
+    );
+    expect(screen.getByRole("textbox", { name: "Comment" })).toHaveValue(
+      "Keep this comment"
+    );
+
+    await user.click(screen.getByRole("button", { name: "Send comment" }));
+
+    expect(mockCreateThread).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Comment added")).toBeVisible();
+    expect(
+      screen.queryByRole("form", { name: "New comment" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Comment thread" })
+    ).toBeVisible();
+  });
+
+  it("blocks new comments while disconnected and re-enables them after reconnecting", () => {
+    mockStatus = "disconnected";
+    const { imageTarget, rerender } = renderCanvas();
+
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+
+    expect(imageTarget).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+
+    mockStatus = "connected";
+    rerender(canvas());
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+
+    expect(imageTarget).toHaveAttribute("aria-disabled", "false");
+    expect(screen.getByRole("form", { name: "New comment" })).toBeVisible();
+  });
+
+  it("retains the current draft and prevents submission during a connection loss", async () => {
+    const user = userEvent.setup();
+    const { imageTarget, rerender } = renderCanvas();
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+    await user.type(
+      screen.getByRole("textbox", { name: "Comment" }),
+      "Still here"
+    );
+    mockStatus = "reconnecting";
+
+    rerender(canvas());
+    fireEvent.submit(screen.getByRole("form", { name: "New comment" }));
+
+    expect(screen.getByRole("button", { name: "Send comment" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Comment" })).toHaveValue(
+      "Still here"
+    );
+    expect(mockCreateThread).not.toHaveBeenCalled();
+
+    mockStatus = "connected";
+    rerender(canvas());
+
+    expect(screen.getByRole("button", { name: "Send comment" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "Comment" })).toHaveValue(
+      "Still here"
+    );
+  });
+
+  it("closes a draft with Escape without submitting it", () => {
+    const { imageTarget } = renderCanvas();
+    fireEvent.click(imageTarget, { clientX: 280, clientY: 240, detail: 1 });
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment" }), {
+      key: "Escape",
+    });
+
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed pin move and keeps the persisted anchor", () => {
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.3,
+        y: 0.4,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    mockEditThreadMetadata.mockImplementationOnce(() => {
+      throw new Error("Local SDK failure");
+    });
+    renderCanvas();
+    const pin = screen.getByRole("button", { name: "Open comment thread" });
+
+    dragCommentPin(pin, { x: 280, y: 240 }, { x: 330, y: 260 });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The comment could not be moved"
+    );
+    expect(pin).toHaveStyle({ transform: "translate3d(250px, 180px, 0)" });
+  });
+
+  it("allows reading threads but prevents pin dragging while offline", async () => {
+    const user = userEvent.setup();
+    mockStatus = "disconnected";
+    mockThreads = [
+      makeThread("th_existing", {
+        x: 0.3,
+        y: 0.4,
+        coordinateSpace: "image",
+        zIndex: 1,
+      }),
+    ];
+    renderCanvas();
+    const pin = screen.getByRole("button", { name: "Open comment thread" });
+
+    dragCommentPin(pin, { x: 280, y: 240 }, { x: 330, y: 260 });
+    await user.click(pin);
+
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("dialog", { name: "Comment thread" })
+    ).toBeVisible();
+  });
   it("opens a composer at the clicked image point and persists normalized metadata once", async () => {
     const user = userEvent.setup();
     const { imageTarget } = renderCanvas();
@@ -416,7 +858,11 @@ describe("comments with canvas navigation", () => {
   function renderInteractiveCanvas() {
     render(
       <ImageCanvas>
-        <CommentsCanvas />
+        <CollaborationStatus>
+          <Suspense fallback={<div>Loading shared comments…</div>}>
+            <CommentsCanvas />
+          </Suspense>
+        </CollaborationStatus>
       </ImageCanvas>
     );
     const viewport = screen.getByRole("region", {
@@ -443,6 +889,32 @@ describe("comments with canvas navigation", () => {
     fireEvent.pointerMove(target, { clientX: 480, clientY: 260 });
     fireEvent.pointerUp(target, { clientX: 480, clientY: 260 });
   }
+
+  it("keeps panning and zooming usable while comments are disconnected", () => {
+    mockStatus = "disconnected";
+    const { imageTarget, image } = renderInteractiveCanvas();
+
+    pan(imageTarget);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+
+    expect(screen.getByLabelText("Zoom level")).toHaveTextContent("125%");
+    expect(image).toHaveStyle({ transform: "translate(7px, -80.5px)" });
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+  });
+
+  it("removes comment targets when the image fails without changing shared metadata", () => {
+    const { image } = renderInteractiveCanvas();
+
+    fireEvent.error(image);
+
+    expect(
+      screen.queryByRole("button", { name: "Add a comment on the image" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry image" })).toBeEnabled();
+    expect(mockCreateThread).not.toHaveBeenCalled();
+    expect(mockEditThreadMetadata).not.toHaveBeenCalled();
+  });
 
   function measurePopover(
     element: HTMLElement,

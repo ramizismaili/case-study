@@ -1,10 +1,13 @@
-import { FloatingThread, CommentPin } from "@liveblocks/react-ui";
+import { FloatingThread, CommentPin, Comment } from "@liveblocks/react-ui";
 import type { ThreadData } from "@liveblocks/client";
 import { useDraggable } from "@dnd-kit/core";
 import { useMaxZIndex } from "../hooks";
 import type { Point } from "../lib/coordinates";
 import { useThreadPlacement } from "../hooks/useThreadPlacement";
 import { COMMENT_PIN_SIZE } from "../lib/thread-placement";
+import { useStatus, useThreadSubscription } from "@liveblocks/react/suspense";
+import { hasCommentContent } from "../lib/comment-body";
+import { useActionNotifications } from "./ActionNotifications";
 
 type DraggableThreadProps = {
   thread: ThreadData;
@@ -19,8 +22,11 @@ export function DraggableThread({
   open,
   onOpenChange,
 }: DraggableThreadProps) {
+  const canEdit = useStatus() === "connected";
+  const notify = useActionNotifications();
+  const subscription = useThreadSubscription(thread.id);
   const { isDragging, attributes, listeners, setNodeRef, transform } =
-    useDraggable({ id: thread.id });
+    useDraggable({ id: thread.id, disabled: !canEdit });
   const maxZIndex = useMaxZIndex();
   const x = position.x + (transform?.x ?? 0);
   const y = position.y + (transform?.y ?? 0);
@@ -31,6 +37,64 @@ export function DraggableThread({
       thread={thread}
       open={open}
       onOpenChange={onOpenChange}
+      showActions={canEdit ? "hover" : false}
+      showResolveAction={canEdit}
+      showSubscription={false}
+      onResolvedChange={(resolved) =>
+        notify({
+          action: resolved ? "thread-resolved" : "thread-reopened",
+          threadId: thread.id,
+        })
+      }
+      onCommentEdit={(comment) =>
+        notify({
+          action: "comment-edited",
+          threadId: thread.id,
+          commentId: comment.id,
+        })
+      }
+      onCommentDelete={(comment) =>
+        notify({
+          action: "comment-deleted",
+          threadId: thread.id,
+          commentId: comment.id,
+        })
+      }
+      commentDropdownItems={({ comment, children }) => (
+        <>
+          {canEdit &&
+            comment.id === thread.comments.find((item) => item.body)?.id && (
+              <Comment.DropdownItem
+                onSelect={() => {
+                  const subscribed = subscription.status === "subscribed";
+                  if (subscribed) subscription.unsubscribe();
+                  else subscription.subscribe();
+                  notify({
+                    action: subscribed
+                      ? "thread-unsubscribed"
+                      : "thread-subscribed",
+                    threadId: thread.id,
+                  });
+                }}
+              >
+                {subscription.status === "subscribed"
+                  ? "Unsubscribe from thread"
+                  : "Subscribe to thread"}
+              </Comment.DropdownItem>
+            )}
+          {children}
+        </>
+      )}
+      onSubmitCapture={(event) => {
+        if (!canEdit) event.preventDefault();
+      }}
+      onComposerSubmit={(comment, event) => {
+        if (!canEdit || !hasCommentContent(comment.body)) {
+          event.preventDefault();
+          return;
+        }
+        notify({ action: "reply-added", threadId: thread.id });
+      }}
       {...placement}
       style={{
         ...placement.style,

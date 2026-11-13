@@ -83,6 +83,56 @@ button:focus-visible {
   color: #65736b;
 }
 
+.review-header-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connection-indicator {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: help;
+}
+
+.connection-indicator:focus-visible {
+  outline: 2px solid #347c66;
+  outline-offset: 3px;
+}
+
+.connection-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #b07b24;
+  box-shadow: 0 0 0 4px #b07b2414;
+}
+
+.connection-dot[data-state="connected"] {
+  background: #27865e;
+  box-shadow: 0 0 0 4px #27865e14;
+}
+
+.connection-dot[data-state="disconnected"] {
+  background: #bb4c42;
+  box-shadow: 0 0 0 4px #bb4c4214;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .image-viewport {
   position: relative;
   flex: 1;
@@ -207,10 +257,149 @@ button:focus-visible {
   color: #53665b;
   font-size: 12px;
   line-height: 1.5;
+  z-index: 4;
 }
 
 .canvas-notice strong {
   color: #20342d;
+}
+
+.image-notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(340px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid #dce2dc;
+  border-radius: 12px;
+  background: #fafbf9;
+  text-align: center;
+  font-size: 13px;
+  z-index: 3;
+}
+
+.notification-stack {
+  position: fixed;
+  top: 88px;
+  right: 20px;
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100dvh - 112px);
+  overflow: auto;
+  padding: 4px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.notification-stack > * {
+  pointer-events: auto;
+}
+
+.connection-notice,
+.action-toast,
+.collaboration-error {
+  padding: 12px 14px;
+  border: 1px solid #dce2dc;
+  border-radius: 12px;
+  background: #fafbf9;
+  box-shadow: 0 4px 16px #20342d14;
+}
+
+.connection-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+}
+
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e5f1e9;
+  color: #26704e;
+  font-size: 14px;
+}
+
+.toast-message {
+  display: grid;
+  gap: 3px;
+}
+
+.toast-saving {
+  color: #65736b;
+  font-size: 12px;
+}
+
+.notification-stack .toast-dismiss {
+  margin-left: auto;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: #65736b;
+  font-size: 20px;
+}
+
+.notification-stack .toast-dismiss:hover {
+  background: #edf0ee;
+}
+
+.collaboration-errors {
+  width: 100%;
+  max-height: 55dvh;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.collaboration-error {
+  border-color: #d6b9a0;
+}
+
+.collaboration-error p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.collaboration-error textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #dce2dc;
+  border-radius: 6px;
+  resize: vertical;
+  font: inherit;
+}
+
+:is(.canvas-notice, .image-notice, .notification-stack) button {
+  padding: 8px 12px;
+  min-height: 36px;
+  border: 1px solid #b8c8bd;
+  border-radius: 7px;
+  background: #e7eee8;
+  color: #20342d;
+  cursor: pointer;
 }
 
 .review-footer {
@@ -238,6 +427,40 @@ button:focus-visible {
   }
 
   .review-footer span:last-child {
+    display: none;
+  }
+
+  .zoom-controls {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .zoom-controls button {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .canvas-caption {
+    display: none;
+  }
+
+  .notification-stack {
+    top: 76px;
+    right: 12px;
+    max-height: calc(100dvh - 92px);
+  }
+}
+
+@media (max-height: 480px) {
+  .review-app {
+    min-height: 0;
+  }
+
+  .review-header {
+    padding-block: 10px;
+  }
+
+  .review-footer {
     display: none;
   }
 }

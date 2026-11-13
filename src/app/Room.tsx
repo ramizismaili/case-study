@@ -7,6 +7,7 @@ import { ClientSideSuspense } from "@liveblocks/react";
 import { ErrorBoundary } from "react-error-boundary";
 import { CommentsCanvas } from "../components/CommentsCanvas";
 import { Loading } from "../components/Loading";
+import { CollaborationStatus } from "../components/CollaborationStatus";
 
 export function Room({ isConfigured }: { isConfigured: boolean }) {
   const params = useSearchParams();
@@ -29,18 +30,25 @@ export function Room({ isConfigured }: { isConfigured: boolean }) {
   }
 
   return (
-    <RoomProvider id={roomId}>
-      <ErrorBoundary
-        fallback={
-          <div className="canvas-notice" role="alert">
-            There was an error while getting threads.
-          </div>
-        }
-      >
-        <ClientSideSuspense fallback={<Loading />}>
-          <CommentsCanvas />
-        </ClientSideSuspense>
-      </ErrorBoundary>
+    <RoomProvider key={roomId} id={roomId}>
+      <CollaborationStatus>
+        <ErrorBoundary
+          resetKeys={[roomId]}
+          fallback={
+            <div className="canvas-notice" role="alert">
+              <strong>Comments could not be loaded</strong>
+              <span>You can still explore the image. Reload to try again.</span>
+              <button type="button" onClick={() => window.location.reload()}>
+                Reload comments
+              </button>
+            </div>
+          }
+        >
+          <ClientSideSuspense fallback={<Loading />}>
+            <CommentsCanvas />
+          </ClientSideSuspense>
+        </ErrorBoundary>
+      </CollaborationStatus>
     </RoomProvider>
   );
 }

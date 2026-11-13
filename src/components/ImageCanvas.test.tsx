@@ -224,6 +224,96 @@ function loadImage() {
 }
 
 describe("ImageCanvas", () => {
+  it("announces image loading until usable dimensions arrive", () => {
+    render(<ImageCanvas />);
+    const viewport = screen.getByRole("region", {
+      name: "Image review canvas",
+    });
+
+    expect(screen.getByText("Loading image…")).toBeVisible();
+    expect(viewport).toHaveAttribute("aria-busy", "true");
+
+    act(() => resizeViewport({ width: 1000, height: 700 }));
+    loadImage();
+
+    expect(screen.queryByText("Loading image…")).not.toBeInTheDocument();
+    expect(viewport).toHaveAttribute("aria-busy", "false");
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeEnabled();
+  });
+
+  it("handles a failed load and retries the image successfully", async () => {
+    const user = userEvent.setup();
+    render(<ImageCanvas />);
+    act(() => resizeViewport({ width: 1000, height: 700 }));
+    const image = screen.getByAltText(
+      "Alpine escape travel design with an illustrated mountain landscape"
+    );
+
+    fireEvent.error(image);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The image could not be loaded"
+    );
+    expect(image).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Retry image" }));
+
+    expect(screen.getByText("Loading image…")).toBeVisible();
+    expect(
+      screen.getByAltText(
+        "Alpine escape travel design with an illustrated mountain landscape"
+      )
+    ).toHaveAttribute("src", "/review-board.svg?retry=1");
+    loadImage();
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("img")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeEnabled();
+  });
+
+  it("detects an image failure that happened before hydration", () => {
+    jest
+      .spyOn(HTMLImageElement.prototype, "complete", "get")
+      .mockReturnValue(true);
+    jest
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(0);
+    render(<ImageCanvas />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The image could not be loaded"
+    );
+    expect(screen.getByRole("button", { name: "Retry image" })).toBeEnabled();
+  });
+
+  it("treats a load event without valid image dimensions as a failure", () => {
+    render(<ImageCanvas />);
+    const image = screen.getByAltText(
+      "Alpine escape travel design with an illustrated mountain landscape"
+    );
+
+    fireEvent.load(image);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The image could not be loaded"
+    );
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+  });
+
+  it("disables navigation when a previously loaded image fails", () => {
+    const { image, viewport } = renderReadyCanvas();
+    fireEvent.pointerDown(image, { clientX: 200, clientY: 200 });
+
+    fireEvent.error(image);
+    fireEvent.pointerMove(image, { clientX: 500, clientY: 500 });
+
+    expect(image.hasPointerCapture(1)).toBe(false);
+    expect(viewport).not.toHaveAttribute("data-panning");
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+    expect(image).not.toBeVisible();
+  });
+
   it("renders an image that finished loading before hydration", () => {
     jest
       .spyOn(HTMLImageElement.prototype, "complete", "get")
