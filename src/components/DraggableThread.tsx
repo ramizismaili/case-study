@@ -1,58 +1,52 @@
-import { useMemo, useState } from "react";
 import { FloatingThread, CommentPin } from "@liveblocks/react-ui";
-import { ThreadData } from "@liveblocks/client";
+import type { ThreadData } from "@liveblocks/client";
 import { useDraggable } from "@dnd-kit/core";
 import { useMaxZIndex } from "../hooks";
+import type { Point } from "../lib/coordinates";
 
-// A draggable thread
-export function DraggableThread({ thread }: { thread: ThreadData }) {
-  // Open threads that have just been created
-  const defaultOpen = useMemo(() => {
-    return Number(new Date()) - Number(new Date(thread.createdAt)) <= 100;
-  }, [thread]);
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+type DraggableThreadProps = {
+  thread: ThreadData;
+  position: Point;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
 
-  // Enable drag
+export function DraggableThread({
+  thread,
+  position,
+  open,
+  onOpenChange,
+}: DraggableThreadProps) {
   const { isDragging, attributes, listeners, setNodeRef, transform } =
-    useDraggable({
-      id: thread.id,
-    });
-
-  // If currently dragging, add drag values to current metadata
-  const x = transform ? transform.x + thread.metadata.x : thread.metadata.x;
-  const y = transform ? transform.y + thread.metadata.y : thread.metadata.y;
-
-  // Used to set z-index higher than other threads when open or dragging
+    useDraggable({ id: thread.id });
   const maxZIndex = useMaxZIndex();
-  const currentZIndex =
-    isOpen || isDragging ? maxZIndex + 1 : thread.metadata?.zIndex || 0;
+  const x = position.x + (transform?.x ?? 0);
+  const y = position.y + (transform?.y ?? 0);
 
   return (
     <FloatingThread
       thread={thread}
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      defaultOpen={defaultOpen}
+      open={open}
+      onOpenChange={onOpenChange}
       side="right"
       style={{ pointerEvents: isDragging ? "none" : "auto" }}
     >
-      <div
+      <CommentPin
         ref={setNodeRef}
+        userId={thread.comments[0]?.userId}
+        corner="top-left"
+        {...listeners}
+        {...attributes}
+        aria-label={open ? "Close comment thread" : "Open comment thread"}
         style={{
           position: "absolute",
           top: 0,
           left: 0,
           transform: `translate3d(${x}px, ${y}px, 0)`,
-          zIndex: currentZIndex,
+          zIndex: open || isDragging ? maxZIndex + 1 : thread.metadata.zIndex,
+          touchAction: "none",
         }}
-      >
-        <CommentPin
-          userId={thread.comments[0]?.userId}
-          corner="top-left"
-          {...listeners}
-          {...attributes}
-        />
-      </div>
+      />
     </FloatingThread>
   );
 }

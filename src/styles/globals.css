@@ -114,6 +114,23 @@ button:focus-visible {
   pointer-events: none;
 }
 
+.comments-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.image-comment-target {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: crosshair;
+}
+
+.comment-pins {
+  isolation: isolate;
+}
+
 .canvas-notice {
   position: absolute;
   top: 16px;

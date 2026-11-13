@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PropsWithChildren } from "react";
 import { getImageTransform, type Size } from "../lib/coordinates";
+import { ImageCanvasContext } from "./ImageCanvasContext";
 
 export function ImageCanvas({ children }: PropsWithChildren) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -76,7 +77,9 @@ export function ImageCanvas({ children }: PropsWithChildren) {
               : { visibility: "hidden" }
           }
         />
-        {children}
+        <ImageCanvasContext.Provider value={{ imageSize, transform }}>
+          {children}
+        </ImageCanvasContext.Provider>
         <span className="canvas-caption">Alpine escape / Cover concept</span>
       </div>
       <footer className="review-footer">

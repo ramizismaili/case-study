@@ -10,7 +10,8 @@ declare global {
     };
     // Custom metadata set on threads, for useThreads, useCreateThread, etc.
     ThreadMetadata: {
-      // Starter viewport pixels. Image-relative persistence is added in milestone 2.
+      // "image" stores normalized x/y. Absent on legacy viewport-pixel threads.
+      coordinateSpace?: "image";
       x: number;
       y: number;
       zIndex: number;
