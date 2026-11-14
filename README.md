@@ -145,6 +145,21 @@ Tests mock Liveblocks network hooks and editor/popover components where needed; 
 
 Manual checks for multiplayer presence: use two tabs in the same configured room, choose different viewport sizes and zoom/pan settings, and verify that a remote cursor tracks the same image detail. Check pointer leave, tab switching, reconnect, and closing one tab; confirm the avatar count follows connections. At narrow widths, check the avatar overflow and header layout. With cursors visible, create a comment, drag a pin, and open an edge thread to verify that overlays do not intercept interactions. These real-service checks remain separate from the mocked Jest coverage.
 
+## Continuous integration
+
+[CI](.github/workflows/ci.yml) runs on pushes to `main` and pull requests targeting `main`. It uses Node.js 24, caches npm downloads, and runs a clean dependency install, TypeScript checks, Jest in CI mode, and the production build. A failed step fails the job. There is no lint script configured.
+
+Run the same checks locally with Node.js 24:
+
+```sh
+npm ci
+npm run typecheck
+npm test -- --ci --runInBand
+npm run build
+```
+
+No GitHub secrets or `.env.local` file are required for these checks: tests mock Liveblocks, and the build does not authenticate with the service. `LIVEBLOCKS_SECRET_KEY` is only required to use collaboration at runtime; configure it in `.env.local` for local development or in the deployment environment. Do not add it to this CI workflow.
+
 ## Known limitations
 
 - Authentication uses a client-selected demo identity stored in sessionStorage, retained across authentication requests and reloads in that tab. It retains the starter's broad demo-room write permission. This is not production authentication: users can select another demo identity, and a real deployment needs authenticated identities and explicit room authorization. Clearing session storage creates a new selection; different tabs may select the same demo person.
